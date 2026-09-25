@@ -2,6 +2,16 @@
 
 All notable changes to `@beastjs/devtools` are recorded here.
 
+## Unreleased
+
+### Changed
+
+- The repository now contains only this package, at its root. The
+  `repository` and `homepage` links point there; the 0.1.0 links pointed into
+  a `devtools/` folder that no longer exists.
+- `client/env.d.ts` declares `.btsx` modules, so the overlay sources
+  type-check on their own.
+
 ## 0.1.0
 
 First release: an in-page overlay for Beast (BTSX) and Octane apps during

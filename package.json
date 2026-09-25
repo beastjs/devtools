@@ -7,10 +7,9 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/beastjs/devtools.git",
-    "directory": "devtools"
+    "url": "git+https://github.com/beastjs/devtools.git"
   },
-  "homepage": "https://github.com/beastjs/devtools/tree/main/devtools#readme",
+  "homepage": "https://github.com/beastjs/devtools#readme",
   "bugs": {
     "url": "https://github.com/beastjs/devtools/issues"
   },
@@ -52,8 +51,11 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "prepublishOnly": "bun run build && bun test"
+    "check": "bun run typecheck && bun run test && bun run build",
+    "pack:check": "bun run build && npm pack --dry-run",
+    "prepublishOnly": "bun run check"
   },
   "peerDependencies": {
     "beast-tsrx": "^0.4.3",

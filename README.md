@@ -159,6 +159,30 @@ The overlay's own settings override the analyzer defaults for that browser.
   import cycle is worth knowing about.
 - Imports that only the moved section used are left in the source file.
 
+## Development
+
+```bash
+bun install
+bun run check        # type check, tests, and plugin build
+bun run pack:check   # list the files npm would publish
+```
+
+- `vite.ts` and `server/` hold the Vite plugin. They run in Node and are
+  built to `dist/`.
+- `client/` holds the overlay, written in BTSX. It ships as source.
+- `shared/` holds wire types used by both sides.
+
+To try changes in an app, link the package and add it to the app's
+`vite.config.ts`:
+
+```bash
+bun link                              # in this repository
+bun add -d link:@beastjs/devtools     # in the app
+```
+
+Edits under `client/` hot-reload in the linked app. Changes to `vite.ts` or
+`server/` need `bun run build` and a dev-server restart.
+
 ## License
 
 ISC
