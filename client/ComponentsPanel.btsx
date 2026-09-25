@@ -1,0 +1,212 @@
+import { useMemo, useState, useSyncExternalStore } from 'octane'
+import type { ComponentLocation } from '../shared/types.ts'
+import { openInEditor } from './api.ts'
+import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell, type RuntimeNode } from './runtime.ts'
+import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
+
+module
+  interface ComponentsPanelProps {
+    components: readonly ComponentLocation[]
+    showControlFlow: boolean
+    onShowControlFlowChange: (value: boolean) => void
+    onViewSource: (path: string, line: number) => void
+    onAnalyze: (path: string) => void
+  }
+
+  interface TreeRow {
+    node: RuntimeNode
+    depth: number
+    expandable: boolean
+    open: boolean
+  }
+
+  interface ValueRow {
+    key: string
+    label: string
+    kind: string
+    value: unknown
+  }
+
+  const KIND_LABEL: Record<HookCell['kind'], string> = {
+    state: 'state',
+    reducer: 'reducer',
+    ref: 'ref',
+    'memo-or-callback': 'memo',
+    other: 'hook',
+  }
+
+  /** Setup hooks whose runtime cell `inspect()` reports, keyed to the cell kind. */
+  const VALUE_HOOKS: Record<string, HookCell['kind']> = {
+    useState: 'state',
+    useLinkedState: 'state',
+    useReducer: 'reducer',
+    useRef: 'ref',
+    useMemo: 'memo-or-callback',
+    useCallback: 'memo-or-callback',
+  }
+
+  function childrenOf(node: RuntimeNode, showControlFlow: boolean): RuntimeNode[] {
+    if (showControlFlow) return node.children
+    return node.children.flatMap((child) => (child.controlFlow ? childrenOf(child, false) : [child]))
+  }
+
+  function matches(node: RuntimeNode, query: string, showControlFlow: boolean): boolean {
+    return node.label.toLowerCase().includes(query) || childrenOf(node, showControlFlow).some((child) => matches(child, query, showControlFlow))
+  }
+
+  function treeRows(roots: readonly RuntimeNode[], collapsed: ReadonlySet<number>, showControlFlow: boolean, query: string): TreeRow[] {
+    const rows: TreeRow[] = []
+    const visit = (node: RuntimeNode, depth: number) => {
+      if (query !== '' && !matches(node, query, showControlFlow)) return
+      const children = childrenOf(node, showControlFlow)
+      const open = query !== '' || !collapsed.has(node.id)
+      rows.push({ node, depth, expandable: children.length > 0, open })
+      if (open) children.forEach((child) => visit(child, depth + 1))
+    }
+    roots.forEach((root) => visit(root, 0))
+    return rows
+  }
+
+  /**
+   * Name runtime hook cells after the setup declarations that created them.
+   * Labels are applied only when the value hooks line up one-to-one by kind,
+   * so a mismatch (custom hooks, conditional scopes) falls back to indices.
+   */
+  function hookRows(cells: readonly HookCell[], location: ComponentLocation | undefined): ValueRow[] {
+    const bindings = (location?.hooks ?? []).filter((binding) => binding.hook in VALUE_HOOKS)
+    const valueCells = cells.filter((cell) => cell.kind !== 'other')
+    const aligned = bindings.length === valueCells.length && bindings.every((binding, index) => VALUE_HOOKS[binding.hook] === valueCells[index]!.kind)
+    let next = 0
+    return cells.map((cell, index) => {
+      const binding = aligned && cell.kind !== 'other' ? bindings[next++] : undefined
+      return {
+        key: `hook-${index}`,
+        label: binding?.names[0] ?? `#${index}`,
+        kind: binding?.hook ?? KIND_LABEL[cell.kind],
+        value: cell.value,
+      }
+    })
+  }
+
+props { components, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze }: ComponentsPanelProps
+setup
+  const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
+  const [query, setQuery] = useState('');
+  const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const rows = useMemo(() => treeRows(runtime.roots, collapsed, showControlFlow, query.trim().toLowerCase()), [runtime.roots, collapsed, showControlFlow, query]);
+  const detail = runtime.detail;
+  const location = detail === null ? undefined : components.find((component) => component.name === detail.name);
+  const hooks = detail === null ? [] : hookRows(detail.hooks, location);
+  const context = detail === null ? [] : detail.context.map((entry, index) => ({ key: `context-${index}`, label: entry.name, kind: 'context', value: entry.value }));
+  const values = [...hooks, ...context];
+  const toggleNode = (id: number) => setCollapsed((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const toggleValue = (key: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+
+if runtime.status === 'unavailable'
+  .bdt-empty
+    .bdt-empty-card
+      p.bdt-empty-title Runtime inspection is off
+      p Octane exposes its component tree only when profiling metadata is compiled in. Enable it for dev builds in vite.config.ts:
+      pre.bdt-pre #{"beastOctane({ octane: { profile: 'auto' } })"}
+      p.bdt-dim BTSX → TSRX and Refactor keep working without it.
+elseif runtime.status === 'connecting'
+  .bdt-empty
+    p Connecting to the Octane runtime…
+else
+  fragment
+    .bdt-pane
+      .bdt-toolbar
+        input.bdt-input(
+          ~ type="search"
+          ~ placeholder="Filter components"
+          ~ aria-label="Filter components"
+          ~ value={query}
+          ~ onInput={(event) => setQuery(event.currentTarget.value)}
+          ~ )
+        label.bdt-check
+          input(type="checkbox" checked={showControlFlow} onChange={(event) => onShowControlFlowChange(event.currentTarget.checked)})
+          | Control flow
+        .bdt-spacer
+        span.bdt-dim #{runtime.componentCount} component#{runtime.componentCount === 1 ? '' : 's'}
+      .bdt-scroll
+        if rows.length === 0
+          p.bdt-empty #{query === '' ? 'No Octane roots are mounted.' : 'Nothing matches that filter.'}
+        else
+          div.bdt-tree(role="tree" aria-label="Component tree")
+            each row in rows key row.node.id
+              button(
+                ~ type="button"
+                ~ role="treeitem"
+                ~ aria-selected={runtime.selectedId === row.node.id}
+                ~ aria-expanded={row.expandable ? row.open : undefined}
+                ~ className={cx('bdt-tree-row', runtime.selectedId === row.node.id && 'is-selected')}
+                ~ style={{ paddingLeft: `${6 + row.depth * 14}px` }}
+                ~ onClick={() => selectRuntimeNode(row.node.id)}
+                ~ onDblClick={() => row.expandable && toggleNode(row.node.id)}
+                ~ )
+                span(
+                  ~ className={cx('bdt-caret', row.open && 'is-open')}
+                  ~ onClick={(event) => { event.stopPropagation(); if (row.expandable) toggleNode(row.node.id); }}
+                  ~ )
+                  | #{row.expandable ? '▸' : ''}
+                span(className={cx('bdt-tree-name', row.node.controlFlow && 'is-flow')}) #{row.node.label}
+                if row.node.kind === 'root' || row.node.kind === 'portal'
+                  span.bdt-badge(style={{ marginLeft: '8px' }}) #{row.node.kind}
+                span.bdt-tree-id ##{row.node.id}
+    aside.bdt-detail(aria-label="Selected component")
+      if detail === null
+        .bdt-empty
+          p Select a component to inspect its state, context, and source.
+      else
+        fragment
+          .bdt-detail-head
+            p.bdt-detail-name
+              | #{detail.name}
+              span.bdt-badge ##{detail.id}
+            if location === undefined
+              p.bdt-dim No .btsx declaration found for this name.
+            else
+              fragment
+                button.bdt-link(type="button" title="Open in editor" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) #{location.path}:#{location.line}
+                .bdt-detail-actions
+                  button.bdt-button.is-primary(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
+                  button.bdt-button(type="button" onClick={() => onAnalyze(location.path)}) Analyze file
+                  button.bdt-button(type="button" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) Open in editor
+          .bdt-scroll
+            p.bdt-section-label State & hooks
+            if values.length === 0
+              p.bdt-dim(style={{ padding: '0 14px' }}) No hook state or context.
+            else
+              .bdt-props
+                each item in values key item.key
+                  div.bdt-prop
+                    span.bdt-prop-key
+                      | #{item.label}
+                      span.bdt-prop-kind #{item.kind}
+                    if isExpandable(item.value)
+                      span(
+                        ~ role="button"
+                        ~ tabIndex={0}
+                        ~ aria-expanded={expanded.has(item.key)}
+                        ~ className={cx('bdt-prop-value', 'is-toggle', valueTone(item.value))}
+                        ~ onClick={() => toggleValue(item.key)}
+                        ~ onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleValue(item.key); } }}
+                        ~ )
+                        | #{expanded.has(item.key) ? '▾ ' : '▸ '}#{preview(item.value)}
+                    else
+                      span(className={cx('bdt-prop-value', valueTone(item.value))}) #{preview(item.value)}
+                    if expanded.has(item.key)
+                      pre.bdt-pre #{pretty(item.value)}
+            p.bdt-section-label Effects
+            p.bdt-dim(style={{ padding: '0 14px 14px' }}) #{detail.effectCount} effect slot#{detail.effectCount === 1 ? '' : 's'}

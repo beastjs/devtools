@@ -1,0 +1,34 @@
+import type { FileSummary } from '../shared/types.ts'
+import { cx } from './util.ts'
+
+module
+  interface FileListProps {
+    files: readonly FileSummary[]
+    active: string | null
+    /** Show refactor suggestion counts instead of line counts. */
+    metrics: boolean
+    onSelect: (path: string) => void
+  }
+
+props { files, active, metrics, onSelect }: FileListProps
+
+nav.bdt-sidebar(aria-label="Beast source files")
+  p.bdt-section-label Files · #{files.length}
+  .bdt-scroll
+    each file in files key file.path
+      button(
+        ~ type="button"
+        ~ title={file.path}
+        ~ aria-current={file.path === active ? 'true' : undefined}
+        ~ className={cx('bdt-file', file.path === active && 'is-active')}
+        ~ onClick={() => onSelect(file.path)}
+        ~ )
+        span.bdt-file-name #{file.path}
+        if file.error !== null
+          span.bdt-badge.is-bad(title={file.error}) error
+        elseif !metrics
+          span.bdt-dim.bdt-mono #{file.lines}
+        elseif file.suggestions > 0
+          span.bdt-badge.is-warn(title="Refactor suggestions") #{file.suggestions}
+        else
+          span.bdt-badge.is-ok(title={`Max depth ${file.maxDepth}`}) ok

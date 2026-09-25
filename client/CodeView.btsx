@@ -1,0 +1,61 @@
+import { useEffect, useMemo, useRef } from 'octane'
+import type { LineRange } from '../shared/types.ts'
+import { highlight, type Language } from './highlight.ts'
+import { cx, scrollToLine, type ScrollTarget } from './util.ts'
+
+module
+  interface CodeViewProps {
+    source: string
+    language: Language
+    /** Lines linked from the other pane or a hover. */
+    linked?: readonly number[]
+    activeLine?: number | null
+    /** Softly tinted regions, such as refactor suggestion occurrences. */
+    ranges?: readonly LineRange[]
+    errorLine?: number | null
+    /** Per-line nesting depth; renders the depth gutter when present. */
+    depths?: ReadonlyArray<number | null> | null
+    depthLimit?: number
+    scrollTo?: ScrollTarget | null
+    label?: string
+    onLineEnter?: (line: number) => void
+    onLineClick?: (line: number) => void
+    onLeave?: () => void
+  }
+
+  const EMPTY: readonly number[] = []
+  const NO_RANGES: readonly LineRange[] = []
+
+  function depthTone(depth: number, limit: number): string {
+    return depth > limit ? 'is-over' : depth === limit ? 'is-near' : ''
+  }
+
+props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave }: CodeViewProps
+setup
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const rows = useMemo(() => highlight(source, language).map((tokens, index) => ({ number: index + 1, tokens })), [source, language]);
+  const linkedLines = useMemo(() => new Set(linked), [linked]);
+  const inRange = (line: number) => ranges.some((range) => range.startLine <= line && line <= range.endLine);
+  useEffect(() => {
+    if (scrollTo !== null) scrollToLine(containerRef.current, scrollTo.line);
+  }, [scrollTo, rows]);
+
+div.bdt-code(ref={containerRef} role="region" aria-label={label} tabIndex={0} onMouseLeave={() => onLeave?.()})
+  .bdt-code-inner
+    each row in rows key row.number
+      div(
+        ~ data-line={row.number}
+        ~ className={cx('bdt-line', inRange(row.number) && 'is-range', linkedLines.has(row.number) && 'is-linked', row.number === activeLine && 'is-active', row.number === errorLine && 'is-error')}
+        ~ onMouseEnter={() => onLineEnter?.(row.number)}
+        ~ onClick={() => onLineClick?.(row.number)}
+        ~ )
+        span.bdt-ln #{row.number}
+        if depths !== null
+          span.bdt-depth
+            if depths[row.number - 1] != null
+              fragment
+                span(className={cx('bdt-depth-bar', depthTone(depths[row.number - 1]!, depthLimit))} style={{ width: `${4 + depths[row.number - 1]! * 5}px` }})
+                span.bdt-depth-num #{depths[row.number - 1]}
+        span.bdt-src
+          each token, index in row.tokens key index
+            span(className={`tk-${token.type}`}) #{token.value}

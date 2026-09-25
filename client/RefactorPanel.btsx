@@ -1,0 +1,169 @@
+import { useEffect, useState } from 'octane'
+import type { AnalyzerSettings, FileReport, FileSummary, RefactorSuggestion } from '../shared/types.ts'
+import CodeView from './CodeView.btsx'
+import FileList from './FileList.btsx'
+import { copyText, openInEditor } from './api.ts'
+import { cx, scrollTarget, type ScrollTarget } from './util.ts'
+
+module
+  interface RefactorPanelProps {
+    files: readonly FileSummary[]
+    file: string | null
+    report: FileReport | null
+    loadError: string | null
+    settings: AnalyzerSettings
+    onSelectFile: (path: string) => void
+    onSettingsChange: (settings: AnalyzerSettings) => void
+  }
+
+  function tone(depth: number, limit: number): string {
+    return depth > limit ? 'is-over' : depth === limit ? 'is-near' : ''
+  }
+
+  function kindLabel(suggestion: RefactorSuggestion): string {
+    return suggestion.kind === 'extract' ? 'extract' : `${suggestion.occurrences.length}× same shape`
+  }
+
+  function applyGuide(suggestion: RefactorSuggestion): string {
+    const where = suggestion.occurrences.map((range) => `${range.startLine}–${range.endLine}`).join(', ')
+    return [
+      `// 1. Add above line ${suggestion.insertBeforeLine}:`,
+      suggestion.snippet,
+      '',
+      `// 2. Replace line${suggestion.occurrences.length === 1 ? 's' : ' ranges'} ${where} with:`,
+      suggestion.usage.trimStart(),
+    ].join('\n')
+  }
+
+  function readLimit(value: string, min: number, max: number): number | null {
+    const parsed = Number.parseInt(value, 10)
+    return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : null
+  }
+
+props { files, file, report, loadError, settings, onSelectFile, onSettingsChange }: RefactorPanelProps
+setup
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [scroll, setScroll] = useState<ScrollTarget | null>(null);
+  const current = report !== null && report.path === file ? report : null;
+  const analysis = current?.analysis ?? null;
+  const selected = analysis?.suggestions.find((suggestion) => suggestion.id === selectedId) ?? null;
+  const histogramMax = Math.max(1, ...(analysis?.histogram ?? [1]));
+  const select = (suggestion: RefactorSuggestion) => {
+    setSelectedId(suggestion.id);
+    setScroll(scrollTarget(suggestion.startLine));
+  };
+  const copy = async (key: string, text: string) => {
+    if (!(await copyText(text))) return;
+    setCopied(key);
+    window.setTimeout(() => setCopied((value) => (value === key ? null : value)), 1400);
+  };
+  useEffect(() => {
+    setSelectedId(null);
+    setOpenId(null);
+  }, [file]);
+
+FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
+.bdt-pane
+  .bdt-toolbar
+    span.bdt-toolbar-title.bdt-mono #{file ?? 'No file selected'}
+    .bdt-spacer
+    label.bdt-field(title="Template nesting depth above which lines count as too deep")
+      | Depth limit
+      input.bdt-input.is-number(
+        ~ type="number"
+        ~ min="1"
+        ~ max="20"
+        ~ value={settings.depthLimit}
+        ~ onInput={(event) => { const depthLimit = readLimit(event.currentTarget.value, 1, 20); if (depthLimit !== null) onSettingsChange({ ...settings, depthLimit }); }}
+        ~ )
+    label.bdt-field(title="Smallest section, in lines, worth extracting")
+      | Min lines
+      input.bdt-input.is-number(
+        ~ type="number"
+        ~ min="2"
+        ~ max="200"
+        ~ value={settings.minLines}
+        ~ onInput={(event) => { const minLines = readLimit(event.currentTarget.value, 2, 200); if (minLines !== null) onSettingsChange({ ...settings, minLines }); }}
+        ~ )
+  if loadError !== null && current === null
+    .bdt-empty
+      p Could not analyze #{file ?? 'the file'}: #{loadError}
+  elseif current === null
+    .bdt-empty
+      p #{files.length === 0 ? 'No .btsx files found under the configured include directories.' : 'Analyzing…'}
+  elseif analysis === null
+    .bdt-empty
+      .bdt-empty-card
+        p.bdt-empty-title This file does not compile
+        p Fix the error shown in BTSX → TSRX to analyze its structure.
+  else
+    fragment
+      .bdt-metrics
+        .bdt-metric
+          span(className={cx('bdt-metric-value', analysis.maxDepth > settings.depthLimit && 'is-over')}) #{analysis.maxDepth}
+          span.bdt-metric-label Max depth
+        .bdt-metric
+          span.bdt-metric-value #{analysis.averageDepth}
+          span.bdt-metric-label Avg depth
+        .bdt-metric
+          span(className={cx('bdt-metric-value', analysis.deepLines > 0 && 'is-over')}) #{analysis.deepLines}
+          span.bdt-metric-label Lines over #{settings.depthLimit}
+        .bdt-metric
+          span.bdt-metric-value #{analysis.templateLines}
+          span.bdt-metric-label Template lines
+        .bdt-metric
+          span.bdt-metric-value #{analysis.indentUnit}
+          span.bdt-metric-label Indent spaces
+        div.bdt-histogram(role="img" aria-label={`Template lines per depth: ${analysis.histogram.map((count, depth) => `depth ${depth}: ${count}`).join(', ')}`})
+          each count, depth in analysis.histogram key depth
+            .bdt-histogram-col(title={`Depth ${depth}: ${count} line${count === 1 ? '' : 's'}`})
+              span(className={cx('bdt-histogram-bar', tone(depth, settings.depthLimit))} style={{ height: `${Math.max(2, Math.round((count / histogramMax) * 24))}px` }})
+              span.bdt-histogram-label #{depth}
+      .bdt-refactor
+        section.bdt-suggestions(aria-label="Refactor suggestions")
+          if analysis.suggestions.length === 0
+            .bdt-empty
+              .bdt-empty-card
+                p.bdt-empty-title Nothing to extract
+                p Every section stays within depth #{settings.depthLimit}, and no blocks of #{settings.minLines}+ lines repeat.
+          else
+            each suggestion in analysis.suggestions key suggestion.id
+              article(
+                ~ className={cx('bdt-card', suggestion.id === selectedId && 'is-selected')}
+                ~ onClick={() => select(suggestion)}
+                ~ )
+                .bdt-card-head
+                  span(className={cx('bdt-severity', `is-${suggestion.severity}`)} title={suggestion.severity})
+                  span.bdt-card-title #{suggestion.name}
+                  span(className={cx('bdt-badge', suggestion.kind === 'extract' ? 'is-warn' : 'is-info')}) #{kindLabel(suggestion)}
+                  span.bdt-dim.bdt-mono L#{suggestion.startLine}–#{suggestion.endLine}
+                p.bdt-card-reason #{suggestion.reason}
+                .bdt-card-meta
+                  span.bdt-chip #{suggestion.label} in #{suggestion.host}
+                  each prop in suggestion.props key prop.name
+                    span.bdt-chip(title={`${prop.name}: ${prop.type}`})
+                      | #{prop.name}
+                      span.bdt-chip-type #{': ' + prop.type}
+                .bdt-card-actions
+                  button.bdt-button.is-primary(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? 'Hide code' : 'Show code'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'Copied' : 'Copy component'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'Copied' : 'Copy usage'}
+                  button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) Open
+                if openId === suggestion.id
+                  pre.bdt-pre #{applyGuide(suggestion)}
+        section.bdt-pane(aria-label="Source with nesting depth")
+          .bdt-pane-head
+            span Nesting depth per line
+            .bdt-spacer
+            span.bdt-dim #{selected === null ? 'Select a suggestion to highlight it' : `${selected.name}: ${selected.occurrences.length === 1 ? 'section' : `${selected.occurrences.length} copies`} highlighted`}
+          CodeView(
+            ~ source={current.source}
+            ~ language="btsx"
+            ~ label="BTSX source with nesting depth"
+            ~ depths={analysis.lineDepths}
+            ~ depthLimit={settings.depthLimit}
+            ~ ranges={selected?.occurrences}
+            ~ scrollTo={scroll}
+            ~ )

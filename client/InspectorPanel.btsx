@@ -1,0 +1,131 @@
+import { useEffect, useRef, useState } from 'octane'
+import type { FileReport, FileSummary } from '../shared/types.ts'
+import CodeView from './CodeView.btsx'
+import FileList from './FileList.btsx'
+import { openInEditor } from './api.ts'
+import { scrollTarget, type ScrollTarget } from './util.ts'
+
+module
+  interface InspectorPanelProps {
+    files: readonly FileSummary[]
+    file: string | null
+    report: FileReport | null
+    loadError: string | null
+    /** A BTSX line another panel asked to reveal. */
+    focus: ScrollTarget | null
+    onSelectFile: (path: string) => void
+  }
+
+  interface Link {
+    side: 'btsx' | 'tsrx'
+    line: number
+  }
+
+props { files, file, report, loadError, focus, onSelectFile }: InspectorPanelProps
+setup
+  const [hover, setHover] = useState<Link | null>(null);
+  const [pinned, setPinned] = useState<Link | null>(null);
+  const [btsxScroll, setBtsxScroll] = useState<ScrollTarget | null>(null);
+  const [tsrxScroll, setTsrxScroll] = useState<ScrollTarget | null>(null);
+  const appliedFocus = useRef<number | null>(null);
+  const shownFile = useRef(file);
+  const current = report !== null && report.path === file ? report : null;
+  const compiled = current?.compiled ?? null;
+  const btsxFor = (line: number) => (compiled?.ok ? (compiled.tsrxToBtsx[line - 1] ?? null) : null);
+  const tsrxFor = (line: number) => (compiled?.ok ? (compiled.btsxToTsrx[line - 1] ?? []) : []);
+  const link = hover ?? pinned;
+  const btsxLinked = link === null ? [] : link.side === 'btsx' ? [link.line] : [btsxFor(link.line)].filter((line): line is number => line !== null);
+  const tsrxLinked = link === null ? [] : link.side === 'tsrx' ? [link.line] : tsrxFor(link.line);
+  const editorLine = pinned === null ? 1 : pinned.side === 'btsx' ? pinned.line : (btsxFor(pinned.line) ?? 1);
+  const pinBtsx = (line: number) => {
+    setPinned({ side: 'btsx', line });
+    const target = tsrxFor(line)[0];
+    if (target !== undefined) setTsrxScroll(scrollTarget(target));
+  };
+  const pinTsrx = (line: number) => {
+    setPinned({ side: 'tsrx', line });
+    const target = btsxFor(line);
+    if (target !== null) setBtsxScroll(scrollTarget(target));
+  };
+  useEffect(() => {
+    if (shownFile.current === file) return;
+    shownFile.current = file;
+    setPinned(null);
+    setHover(null);
+  }, [file]);
+  // Reveal a line requested by another panel once its file report arrives.
+  useEffect(() => {
+    if (focus === null || current === null || appliedFocus.current === focus.nonce) return;
+    appliedFocus.current = focus.nonce;
+    setBtsxScroll(focus);
+    pinBtsx(focus.line);
+  }, [focus, current]);
+
+FileList(files={files} active={file} metrics={false} onSelect={onSelectFile})
+.bdt-pane
+  if loadError !== null && current === null
+    .bdt-empty
+      p Could not load #{file ?? 'the file'}: #{loadError}
+  elseif current === null
+    .bdt-empty
+      p #{files.length === 0 ? 'No .btsx files found under the configured include directories.' : 'Loading…'}
+  else
+    fragment
+      .bdt-toolbar
+        span.bdt-toolbar-title.bdt-mono #{current.path}
+        if compiled?.ok
+          span.bdt-badge.is-ok compiled
+        else
+          span.bdt-badge.is-bad compile error
+        .bdt-spacer
+        span.bdt-dim.bdt-hint Hover to link lines · click to pin
+        button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, editorLine)}) Open in editor
+      if compiled !== null && !compiled.ok
+        .bdt-diagnostic
+          p
+            span.bdt-badge.is-bad #{compiled.error.code}
+            | #{' ' + compiled.error.message}
+          pre.bdt-pre #{compiled.error.formatted}
+          if compiled.error.hint !== undefined
+            p.bdt-muted Hint: #{compiled.error.hint}
+      elseif compiled !== null && compiled.diagnostics.length > 0
+        each diagnostic, index in compiled.diagnostics key index
+          div(className={diagnostic.severity === 'warning' ? 'bdt-diagnostic is-warning' : 'bdt-diagnostic'})
+            pre.bdt-pre #{diagnostic.formatted}
+      .bdt-split
+        section.bdt-pane(aria-label="BTSX source")
+          .bdt-pane-head
+            span BTSX
+            span.bdt-dim #{current.source.split('\n').length} lines
+          CodeView(
+            ~ source={current.source}
+            ~ language="btsx"
+            ~ label="BTSX source"
+            ~ linked={btsxLinked}
+            ~ activeLine={pinned?.side === 'btsx' ? pinned.line : null}
+            ~ errorLine={compiled !== null && !compiled.ok ? compiled.error.line : null}
+            ~ scrollTo={btsxScroll}
+            ~ onLineEnter={(line) => setHover({ side: 'btsx', line })}
+            ~ onLineClick={pinBtsx}
+            ~ onLeave={() => setHover(null)}
+            ~ )
+        section.bdt-pane(aria-label="Generated TSRX")
+          .bdt-pane-head
+            span Generated TSRX
+            if compiled?.ok
+              span.bdt-dim #{compiled.tsrx.split('\n').length} lines
+          if compiled?.ok
+            CodeView(
+              ~ source={compiled.tsrx}
+              ~ language="tsrx"
+              ~ label="Generated TSRX"
+              ~ linked={tsrxLinked}
+              ~ activeLine={pinned?.side === 'tsrx' ? pinned.line : null}
+              ~ scrollTo={tsrxScroll}
+              ~ onLineEnter={(line) => setHover({ side: 'tsrx', line })}
+              ~ onLineClick={pinTsrx}
+              ~ onLeave={() => setHover(null)}
+              ~ )
+          else
+            .bdt-empty
+              p Fix the BTSX error to see generated TSRX.
