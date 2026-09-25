@@ -1,7 +1,7 @@
 {
   "name": "@beastjs/devtools",
   "version": "0.1.0",
-  "description": "In-page devtools for Beast (BTSX) and Octane apps: live component state, BTSX → TSRX inspection, and automatic component extraction for deeply nested templates.",
+  "description": "In-page devtools for Beast (BTSX) and Octane apps on Vite, Rspack and Rsbuild: live component state, BTSX → TSRX inspection, and automatic component extraction for deeply nested templates.",
   "license": "ISC",
   "author": "phtn",
   "type": "module",
@@ -21,6 +21,10 @@
     "devtools",
     "vite",
     "vite-plugin",
+    "rspack",
+    "rspack-plugin",
+    "rsbuild",
+    "rsbuild-plugin",
     "refactor"
   ],
   "exports": {
@@ -31,6 +35,14 @@
     "./vite": {
       "types": "./dist/vite.d.ts",
       "default": "./dist/vite.js"
+    },
+    "./rspack": {
+      "types": "./dist/rspack.d.ts",
+      "default": "./dist/rspack.js"
+    },
+    "./rsbuild": {
+      "types": "./dist/rsbuild.d.ts",
+      "default": "./dist/rsbuild.js"
     },
     "./package.json": "./package.json"
   },
@@ -45,7 +57,10 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css",
+    "./client/mount.ts"
+  ],
   "engines": {
     "node": ">=22.22.2"
   },
@@ -58,11 +73,29 @@
     "prepublishOnly": "bun run check"
   },
   "peerDependencies": {
+    "@rsbuild/core": "^2.0.0",
+    "@rspack/core": "^2.0.0",
     "beast-tsrx": "^0.4.3",
     "octane": "^0.4.3",
     "vite": "^8.0.16"
   },
+  "peerDependenciesMeta": {
+    "@rsbuild/core": {
+      "optional": true
+    },
+    "@rspack/core": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@octanejs/rsbuild-plugin": "0.1.54",
+    "@octanejs/rspack-plugin": "0.1.52",
+    "@rsbuild/core": "^2.2.9",
+    "@rspack/core": "^2.2.7",
+    "@rspack/dev-server": "^2.2.1",
     "@types/node": "^26.2.0",
     "beast-tsrx": "0.4.3",
     "octane": "0.4.3",

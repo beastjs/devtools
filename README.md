@@ -1,10 +1,10 @@
 # @beastjs/devtools
 
 In-page devtools for [Beast](https://www.npmjs.com/package/beast-tsrx) (BTSX)
-and [Octane](https://octanejs.dev/) apps. It adds a panel to your app during
-`vite dev` that shows live component state, puts each `.btsx` file next to the
-TSRX it compiles to, and finds deeply nested templates. It can then extract
-those sections into components for you.
+and [Octane](https://octanejs.dev/) apps. It adds a panel to your app on the
+Vite, Rspack or Rsbuild dev server that shows live component state, puts each
+`.btsx` file next to the TSRX it compiles to, and finds deeply nested
+templates. It can then extract those sections into components for you.
 
 Production builds are untouched: the plugin only runs on the dev server.
 
@@ -14,8 +14,15 @@ Production builds are untouched: the plugin only runs on the dev server.
 | ------------ | ----------- |
 | `beast-tsrx` | `^0.4.3`    |
 | `octane`     | `^0.4.3`    |
-| `vite`       | `^8.0.16`   |
 | Node.js      | `>=22.22.2` |
+
+And one of these bundlers:
+
+| Bundler | Packages                                | Version   |
+| ------- | --------------------------------------- | --------- |
+| Vite    | `vite`                                  | `^8.0.16` |
+| Rspack  | `@rspack/core` and `@rspack/dev-server` | `^2.0.0`  |
+| Rsbuild | `@rsbuild/core`                         | `^2.0.0`  |
 
 ## Install
 
@@ -27,26 +34,77 @@ Or with npm: `npm install -D @beastjs/devtools`.
 
 ## Setup
 
-Add the plugin next to `beastOctane()` in `vite.config.ts`:
+Add the plugin next to `beastOctane()`, importing it from the entry point for
+your bundler. Octane's `profile` option compiles its runtime inspection hook
+into the app; enable it for development only. Without it, the Components panel
+explains how to enable it.
+
+### Vite
 
 ```ts
+// vite.config.ts
 import { beastOctane } from 'beast-tsrx/vite'
-import { beastDevtools } from '@beastjs/devtools'
+import { beastDevtools } from '@beastjs/devtools/vite'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [
-    // `profile: 'auto'` compiles Octane's runtime inspection hook into dev
-    // builds only. Without it, the Components panel explains how to enable it.
+    // `profile: 'auto'` enables the inspection hook in dev builds only.
     beastOctane({ octane: { profile: 'auto' } }),
     beastDevtools(),
   ],
 })
 ```
 
-Run `vite` (or `bun run dev`), then open the panel from the **Beast** button in
-the bottom-right corner or with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>.
-The panel remembers its size, tab and settings per browser.
+`@beastjs/devtools` without a subpath is also the Vite plugin.
+
+### Rspack
+
+```ts
+// rspack.config.ts
+import { beastOctane } from 'beast-tsrx/rspack'
+import { beastDevtools } from '@beastjs/devtools/rspack'
+
+export default {
+  module: { rules: [{ test: /\.css$/, type: 'css' }] },
+  plugins: [
+    // Rspack's `profile` is a boolean; the CLI sets NODE_ENV before loading this file.
+    beastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } }),
+    beastDevtools(),
+  ],
+}
+```
+
+The overlay imports a stylesheet, so the config needs a rule for `.css` files.
+The plugin hooks into `devServer.setupMiddlewares`, so it runs under
+`rspack serve`. To start `RspackDevServer` yourself, pass it
+`compiler.options.devServer`. In a multi-compiler config, add the plugin to
+the browser config that has `devServer`.
+
+### Rsbuild
+
+```ts
+// rsbuild.config.ts
+import { defineConfig } from '@rsbuild/core'
+import { beastOctane } from 'beast-tsrx/rsbuild'
+import { beastDevtools } from '@beastjs/devtools/rsbuild'
+
+export default defineConfig({
+  plugins: [
+    ...beastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } }),
+    beastDevtools(),
+  ],
+})
+```
+
+The overlay loads in every `web` environment; server environments are left
+alone.
+
+### Opening the panel
+
+Start the dev server, then open the panel from the **Beast** button in the
+bottom-right corner or with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>. The
+panel remembers its size, tab and settings per browser.
 
 ## Panels
 
@@ -126,25 +184,32 @@ beastDevtools({
 
 | Option                | Default   | Description                                                             |
 | --------------------- | --------- | ----------------------------------------------------------------------- |
-| `include`             | `['src']` | Directories, relative to the Vite root, scanned for `.btsx` files.      |
+| `include`             | `['src']` | Directories, relative to the project root, scanned for `.btsx` files.   |
 | `analyzer.depthLimit` | `5`       | Template nesting depth (0 = component root) above which lines are deep. |
 | `analyzer.minLines`   | `8`       | Smallest section, in lines, worth extracting.                           |
 | `analyzer.fileLines`  | `30`      | Sections at least this long move to their own file by default.          |
 
-The overlay's own settings override the analyzer defaults for that browser.
+The project root is Vite's `root`, Rspack's `context`, or Rsbuild's root
+path. The overlay's own settings override the analyzer defaults for that
+browser.
 
 ## How it works
 
-- The plugin injects the overlay into `index.html` and serves a small JSON API
-  under `/__beast-devtools/api`. That API compiles, source-maps, analyzes and
-  refactors `.btsx` files with `beast-tsrx`. It also sends an HMR event when a
-  `.btsx` file changes.
+- The plugin adds the overlay to the page: Vite gets a script tag in
+  `index.html`, Rspack a global entry, and Rsbuild a `source.preEntry`.
+- It serves a small JSON API under `/__beast-devtools/api`. That API compiles,
+  source-maps, analyzes and refactors `.btsx` files with `beast-tsrx`. When a
+  `.btsx` file changes, it tells the overlay through a server-sent event
+  stream, so every dev server works the same way. Vite's own file watcher
+  feeds it; under Rspack and Rsbuild the plugin watches the `include`
+  directories itself.
 - The overlay is itself written in BTSX and ships as source, so your app's own
   Beast and Octane versions compile it. It reads the component tree from
-  Octane's `__OCTANE_DEVTOOLS__` hook, which `profile: 'auto'` enables in dev
-  builds. The plugin dedupes `octane` so the overlay and the app share one
-  runtime.
-- Opening files in your editor uses Vite's built-in `/__open-in-editor`
+  Octane's `__OCTANE_DEVTOOLS__` hook, which the `profile` option enables. The
+  overlay and the app share one Octane runtime: the Vite plugin dedupes
+  `octane`, and Octane's Rspack and Rsbuild plugins resolve it to a single
+  copy.
+- Opening files in your editor goes through the dev server's own launch-editor
   endpoint, which honors the `LAUNCH_EDITOR` environment variable.
 
 ## Limitations
@@ -167,20 +232,25 @@ bun run check        # type check, tests, and plugin build
 bun run pack:check   # list the files npm would publish
 ```
 
-- `vite.ts` and `server/` hold the Vite plugin. They run in Node and are
-  built to `dist/`.
+- `vite.ts`, `rspack.ts` and `rsbuild.ts` are the bundler plugins. They wire
+  `server/devtools.ts` (the API and change events) into each dev server.
+  Together with the rest of `server/`, they run in Node and are built to
+  `dist/`.
 - `client/` holds the overlay, written in BTSX. It ships as source.
 - `shared/` holds wire types used by both sides.
+- `vite.test.ts`, `rspack.test.ts` and `rsbuild.test.ts` start each real dev
+  server on a throwaway app and check the overlay bundle, the API, change
+  events and the editor redirect.
 
-To try changes in an app, link the package and add it to the app's
-`vite.config.ts`:
+To try changes in an app, link the package and add it to the app's bundler
+config:
 
 ```bash
 bun link                              # in this repository
 bun add -d link:@beastjs/devtools     # in the app
 ```
 
-Edits under `client/` hot-reload in the linked app. Changes to `vite.ts` or
+Edits under `client/` hot-reload in the linked app. Changes to the plugins or
 `server/` need `bun run build` and a dev-server restart.
 
 ## License

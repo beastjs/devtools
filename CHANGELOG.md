@@ -4,8 +4,24 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ## Unreleased
 
+### Added
+
+- **Rspack and Rsbuild support**: `@beastjs/devtools/rspack` for
+  `rspack serve` and `@beastjs/devtools/rsbuild` for `rsbuild dev`, next to the
+  Vite plugin at `@beastjs/devtools/vite`. Both leave production builds
+  untouched. `vite`, `@rspack/core` and `@rsbuild/core` are optional
+  peer dependencies; install the one you use.
+
 ### Changed
 
+- The overlay learns about `.btsx` changes from a server-sent event stream at
+  `/__beast-devtools/api/events` instead of Vite's HMR channel, and opens files
+  through `/__beast-devtools/api/open-in-editor`, which forwards to the dev
+  server's own launch-editor endpoint.
+- The Components panel's "Runtime inspection is off" hint shows the `profile`
+  setting for Rspack and Rsbuild as well as Vite.
+- `sideEffects` lists the overlay's stylesheet and entry instead of `false`,
+  which let Rspack drop the stylesheet.
 - The repository now contains only this package, at its root. The
   `repository` and `homepage` links point there; the 0.1.0 links pointed into
   a `devtools/` folder that no longer exists.

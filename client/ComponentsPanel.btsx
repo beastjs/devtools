@@ -117,8 +117,8 @@ if runtime.status === 'unavailable'
   .bdt-empty
     .bdt-empty-card
       p.bdt-empty-title Runtime inspection is off
-      p Octane exposes its component tree only when profiling metadata is compiled in. Enable it for dev builds in vite.config.ts:
-      pre.bdt-pre #{"beastOctane({ octane: { profile: 'auto' } })"}
+      p Octane exposes its component tree only when profiling metadata is compiled in. Enable it for dev builds:
+      pre.bdt-pre #{"// vite.config.ts\nbeastOctane({ octane: { profile: 'auto' } })\n\n// rspack.config.ts, rsbuild.config.ts\nbeastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } })"}
       p.bdt-dim BTSX → TSRX and Refactor keep working without it.
 elseif runtime.status === 'connecting'
   .bdt-empty

@@ -47,16 +47,15 @@ export function undoRefactor(id: string): Promise<UndoResult> {
 
 /** Called with the project-relative path whenever a `.btsx` file changes on disk. */
 export function onSourceChanged(listener: (path: string) => void): () => void {
-  const hot = import.meta.hot
-  if (hot === undefined) return () => {}
-  const handler = (data: { path: string }) => listener(data.path)
-  hot.on(SOURCE_CHANGED_EVENT, handler)
-  return () => hot.off(SOURCE_CHANGED_EVENT, handler)
+  // Server-sent events work the same under every dev server, unlike each bundler's HMR channel.
+  const events = new EventSource(`${API_BASE}/events`)
+  events.addEventListener(SOURCE_CHANGED_EVENT, (event) => listener((JSON.parse(event.data) as { path: string }).path))
+  return () => events.close()
 }
 
-/** Ask Vite's built-in launch-editor endpoint to open a file at a position. */
+/** Open a file at a position; the API forwards to the dev server's launch-editor endpoint. */
 export function openInEditor(absolutePath: string, line = 1, column = 1): void {
-  void fetch(`/__open-in-editor?file=${encodeURIComponent(`${absolutePath}:${line}:${column}`)}`)
+  void fetch(`${API_BASE}/open-in-editor?file=${encodeURIComponent(`${absolutePath}:${line}:${column}`)}`)
 }
 
 export async function copyText(text: string): Promise<boolean> {

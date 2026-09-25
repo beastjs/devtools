@@ -1,6 +1,6 @@
 {
   // Editor and `bun run typecheck` settings. Publishing uses tsconfig.build.json,
-  // which compiles only the Node-side plugin.
+  // which compiles only the Node-side plugins.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["vite.ts", "server", "shared", "client"],
+  "include": ["vite.ts", "rspack.ts", "rsbuild.ts", "server", "shared", "client"],
   "exclude": ["**/*.test.ts"]
 }

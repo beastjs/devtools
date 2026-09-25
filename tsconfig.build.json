@@ -1,6 +1,7 @@
 {
-  // Compiles the Vite plugin (Node side) to dist/. The overlay in client/ ships
-  // as source and is compiled by the host app's Beast/Octane toolchain.
+  // Compiles the Vite, Rspack and Rsbuild plugins (Node side) to dist/. The
+  // overlay in client/ ships as source and is compiled by the host app's
+  // Beast/Octane toolchain.
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
@@ -12,6 +13,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["vite.ts", "server/**/*.ts", "shared/**/*.ts"],
+  "include": ["vite.ts", "rspack.ts", "rsbuild.ts", "server/**/*.ts", "shared/**/*.ts"],
   "exclude": ["**/*.test.ts"]
 }
