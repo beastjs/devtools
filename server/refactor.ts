@@ -1,7 +1,7 @@
 import { basename, dirname, join } from 'node:path'
 import type { BeastDocument, ModuleDeclaration } from 'beast-tsrx'
-import type { LineRange, RefactorSuggestion, RefactorTarget } from '../shared/types.ts'
-import { parseImport, renderImport, topLevelDeclarations, type Declaration, type ImportSpecifier } from './source-scan.ts'
+import type { LineRange, RefactorSuggestion, RefactorTarget } from '../shared/types.js'
+import { parseImport, renderImport, topLevelDeclarations, type Declaration, type ImportSpecifier } from './source-scan.js'
 
 /** A refusal with an HTTP status: 409 for stale input, 422 for refactors that cannot be done safely. */
 export class RefactorError extends Error {

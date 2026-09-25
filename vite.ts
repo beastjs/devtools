@@ -1,10 +1,11 @@
+import { existsSync } from 'node:fs'
+import type { IncomingMessage } from 'node:http'
 import { dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { IncomingMessage } from 'node:http'
-import type { Connect, Plugin } from 'vite'
-import { BeastProject } from './server/project.ts'
-import { RefactorError } from './server/refactor.ts'
-import { API_BASE, DEFAULT_SETTINGS, SOURCE_CHANGED_EVENT, type AnalyzerSettings, type ApplyRequest } from './shared/types.ts'
+import { searchForWorkspaceRoot, type Connect, type Plugin } from 'vite'
+import { BeastProject } from './server/project.js'
+import { RefactorError } from './server/refactor.js'
+import { API_BASE, DEFAULT_SETTINGS, SOURCE_CHANGED_EVENT, type AnalyzerSettings, type ApplyRequest } from './shared/types.js'
 
 export interface BeastDevtoolsOptions {
   /** Directories, relative to the Vite root, scanned for `.btsx` sources. Default: `['src']`. */
@@ -13,9 +14,11 @@ export interface BeastDevtoolsOptions {
   analyzer?: Partial<AnalyzerSettings>
 }
 
-const DEVTOOLS_DIR = dirname(fileURLToPath(import.meta.url))
-const CLIENT_DIR = resolve(DEVTOOLS_DIR, 'client')
-const CLIENT_ENTRY = resolve(CLIENT_DIR, 'mount.ts')
+// This module runs from source (`vite.ts`) during development and from
+// `dist/vite.js` once published; the overlay sources sit in `client/` either way.
+const HERE = dirname(fileURLToPath(import.meta.url))
+const PACKAGE_ROOT = [HERE, resolve(HERE, '..')].find((dir) => existsSync(resolve(dir, 'client/mount.ts'))) ?? HERE
+const CLIENT_ENTRY = resolve(PACKAGE_ROOT, 'client/mount.ts')
 
 /**
  * Beast DevTools: an in-page overlay for Beast + Octane apps during `vite dev`.
@@ -32,16 +35,27 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): Plugin {
     name: 'beast:devtools',
     apply: 'serve',
 
+    config(config) {
+      const appRoot = resolve(config.root ?? process.cwd())
+      return {
+        // The overlay must share the app's Octane runtime: a second copy would
+        // install its own inspection hook and see only the overlay's root.
+        resolve: { dedupe: ['octane'] },
+        // A linked package can live outside the workspace root Vite serves.
+        server: { fs: { allow: [searchForWorkspaceRoot(appRoot), PACKAGE_ROOT] } },
+      }
+    },
+
     configResolved(config) {
       root = config.root
-      project = new BeastProject({ root, include: options.include ?? ['src'], exclude: [DEVTOOLS_DIR] })
+      project = new BeastProject({ root, include: options.include ?? ['src'], exclude: [PACKAGE_ROOT] })
     },
 
     configureServer(server) {
       server.middlewares.use(API_BASE, apiMiddleware(() => project, defaults))
 
       const notify = (file: string) => {
-        if (!file.endsWith('.btsx') || file.startsWith(DEVTOOLS_DIR + sep)) return
+        if (!file.endsWith('.btsx') || file.startsWith(PACKAGE_ROOT + sep)) return
         project?.invalidate(file)
         server.ws.send({ type: 'custom', event: SOURCE_CHANGED_EVENT, data: { path: toPosix(relative(root, file)) } })
       }

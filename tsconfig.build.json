@@ -1,0 +1,17 @@
+{
+  // Compiles the Vite plugin (Node side) to dist/. The overlay in client/ ships
+  // as source and is compiled by the host app's Beast/Octane toolchain.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["vite.ts", "server/**/*.ts", "shared/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
+}

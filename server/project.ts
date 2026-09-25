@@ -22,12 +22,12 @@ import type {
   HookBinding,
   ProjectReport,
   UndoResult,
-} from '../shared/types.ts'
-import { analyzeDocument } from './analyze.ts'
-import { diffLines } from './diff.ts'
-import { buildLineMap } from './line-map.ts'
-import { planRefactor, RefactorError, type FileChange } from './refactor.ts'
-import { hookCall, topLevelDeclarations } from './source-scan.ts'
+} from '../shared/types.js'
+import { analyzeDocument } from './analyze.js'
+import { diffLines } from './diff.js'
+import { buildLineMap } from './line-map.js'
+import { planRefactor, RefactorError, type FileChange } from './refactor.js'
+import { hookCall, topLevelDeclarations } from './source-scan.js'
 
 const IGNORED_DIRECTORIES = new Set(['.git', '.beast', 'node_modules', 'dist', 'build', 'coverage'])
 

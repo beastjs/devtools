@@ -9,7 +9,7 @@ import { analyzeDocument } from './analyze.ts'
 import { BeastProject } from './project.ts'
 import { planRefactor, RefactorError, type RefactorPlan } from './refactor.ts'
 
-const APP = readFileSync(new URL('../../src/App.btsx', import.meta.url), 'utf8')
+const APP = readFileSync(new URL('../test/fixtures/App.btsx', import.meta.url), 'utf8')
 const SETTINGS: AnalyzerSettings = { depthLimit: 5, minLines: 8, fileLines: 30 }
 const octane = createOctaneCompiler({ root: process.cwd(), environment: 'client', hmr: false, dev: true })
 

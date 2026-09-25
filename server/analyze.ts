@@ -14,8 +14,8 @@ import type {
   RefactorSuggestion,
   Severity,
   SuggestedProp,
-} from '../shared/types.ts'
-import { hookCall, identifiersIn, parsePropsParameter, topLevelDeclarations } from './source-scan.ts'
+} from '../shared/types.js'
+import { hookCall, identifiersIn, parsePropsParameter, topLevelDeclarations } from './source-scan.js'
 
 /** Component-scope bindings visible at a template position, mapped to a best-effort type. */
 type Bindings = ReadonlyMap<string, string>

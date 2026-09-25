@@ -1,0 +1,73 @@
+{
+  "name": "@beastjs/devtools",
+  "version": "0.1.0",
+  "description": "In-page devtools for Beast (BTSX) and Octane apps: live component state, BTSX → TSRX inspection, and automatic component extraction for deeply nested templates.",
+  "license": "ISC",
+  "author": "phtn",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beastjs/devtools.git",
+    "directory": "devtools"
+  },
+  "homepage": "https://github.com/beastjs/devtools/tree/main/devtools#readme",
+  "bugs": {
+    "url": "https://github.com/beastjs/devtools/issues"
+  },
+  "keywords": [
+    "beast",
+    "btsx",
+    "tsrx",
+    "octane",
+    "devtools",
+    "vite",
+    "vite-plugin",
+    "refactor"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/vite.js",
+  "types": "./dist/vite.d.ts",
+  "files": [
+    "dist",
+    "client",
+    "shared",
+    "!**/*.test.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "test": "bun test",
+    "prepublishOnly": "bun run build && bun test"
+  },
+  "peerDependencies": {
+    "beast-tsrx": "^0.4.3",
+    "octane": "^0.4.3",
+    "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "beast-tsrx": "0.4.3",
+    "octane": "0.4.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.16"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

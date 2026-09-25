@@ -7,7 +7,7 @@ import { analyzeDocument } from './analyze.ts'
 import { buildLineMap } from './line-map.ts'
 import { hookCall, identifiersIn, parsePropsParameter, patternNames, topLevelDeclarations } from './source-scan.ts'
 
-const APP = readFileSync(new URL('../../src/App.btsx', import.meta.url), 'utf8')
+const APP = readFileSync(new URL('../test/fixtures/App.btsx', import.meta.url), 'utf8')
 
 function analyze(source: string, settings: Partial<AnalyzerSettings> = {}, name = 'Fixture'): FileAnalysis {
   const { ast } = compileBeastResult(source, { filename: `${name}.btsx`, componentName: name })

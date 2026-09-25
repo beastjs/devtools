@@ -1,4 +1,4 @@
-import type { DiffHunk, DiffLine } from '../shared/types.ts'
+import type { DiffHunk, DiffLine } from '../shared/types.js'
 
 export interface LineDiff {
   added: number
