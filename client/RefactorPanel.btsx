@@ -147,10 +147,11 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                       | #{prop.name}
                       span.bdt-chip-type #{': ' + prop.type}
                 .bdt-card-actions
-                  button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? 'Hide code' : '⌗'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'Copied' : 'Component'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'Copied' : 'Usage'}
-                  button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) Open
+                  button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? '🞁' : '🞃'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'Component ⮻' : 'Component ⮺'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'Usage ⮻' : 'Usage ⮺'}
+                  button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) Open ⧽
+
                 if openId === suggestion.id
                   pre.bdt-pre #{applyGuide(suggestion)}
         section.bdt-pane(aria-label="Source with nesting depth")

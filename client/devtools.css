@@ -340,18 +340,18 @@
   align-items: center;
   gap: 6px;
   height: 24px;
-  padding: 0 9px;
-  border: 1px solid var(--bdt-line-2);
-  border-radius: 7px;
+  padding: 0 6px;
+  border: 0.33px solid var(--bdt-line-2);
+  border-radius: 6px;
   background: var(--bdt-bg-3);
   color: var(--bdt-text);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .bdt-button:hover {
-  background: var(--bdt-bg-4);
+  color: var(--bdt-warn);
 }
 
 .bdt-button.is-primary {
