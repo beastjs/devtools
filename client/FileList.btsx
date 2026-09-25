@@ -32,3 +32,4 @@ nav.bdt-sidebar(aria-label="Beast source files")
           span.bdt-badge.is-warn(title="Refactor suggestions") #{file.suggestions}
         else
           span.bdt-badge.is-ok(title={`Max depth ${file.maxDepth}`}) ok
+    div.infinite-lines

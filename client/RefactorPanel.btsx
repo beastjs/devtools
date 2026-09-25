@@ -21,7 +21,7 @@ module
   }
 
   function kindLabel(suggestion: RefactorSuggestion): string {
-    return suggestion.kind === 'extract' ? 'extract' : `${suggestion.occurrences.length}× same shape`
+    return suggestion.kind === 'extract' ? '✦' : `${suggestion.occurrences.length}× same shape`
   }
 
   function applyGuide(suggestion: RefactorSuggestion): string {
@@ -101,13 +101,13 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
   else
     fragment
       .bdt-metrics
-        .bdt-metric
+        .bdt-metric(className={analysis.maxDepth > settings.depthLimit && 'metric-alert'})
           span(className={cx('bdt-metric-value', analysis.maxDepth > settings.depthLimit && 'is-over')}) #{analysis.maxDepth}
           span.bdt-metric-label Max depth
         .bdt-metric
           span.bdt-metric-value #{analysis.averageDepth}
           span.bdt-metric-label Avg depth
-        .bdt-metric
+        .bdt-metric(className={analysis.deepLines > 0 && 'metric-alert'})
           span(className={cx('bdt-metric-value', analysis.deepLines > 0 && 'is-over')}) #{analysis.deepLines}
           span.bdt-metric-label Lines over #{settings.depthLimit}
         .bdt-metric
@@ -138,7 +138,7 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                   span(className={cx('bdt-severity', `is-${suggestion.severity}`)} title={suggestion.severity})
                   span.bdt-card-title #{suggestion.name}
                   span(className={cx('bdt-badge', suggestion.kind === 'extract' ? 'is-warn' : 'is-info')}) #{kindLabel(suggestion)}
-                  span.bdt-dim.bdt-mono L#{suggestion.startLine}–#{suggestion.endLine}
+                  span.bdt-dim.bdt-metric-label L#{suggestion.startLine}–#{suggestion.endLine}
                 p.bdt-card-reason #{suggestion.reason}
                 .bdt-card-meta
                   span.bdt-chip #{suggestion.label} in #{suggestion.host}
@@ -147,9 +147,9 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                       | #{prop.name}
                       span.bdt-chip-type #{': ' + prop.type}
                 .bdt-card-actions
-                  button.bdt-button.is-primary(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? 'Hide code' : 'Show code'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'Copied' : 'Copy component'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'Copied' : 'Copy usage'}
+                  button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? 'Hide code' : '⌗'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'Copied' : 'Component'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'Copied' : 'Usage'}
                   button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) Open
                 if openId === suggestion.id
                   pre.bdt-pre #{applyGuide(suggestion)}
