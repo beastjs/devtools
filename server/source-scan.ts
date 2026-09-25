@@ -155,9 +155,13 @@ export interface Declaration {
   init: string
   /** Offset of the declaration keyword inside the scanned code. */
   offset: number
+  keyword: string
+  /** `type` and `interface` declare types; everything else declares values. */
+  kind: 'value' | 'type'
+  exported: boolean
 }
 
-/** Top-level `const`/`let`/`var`/`function`/`class` declarations of a code block. */
+/** Top-level `const`/`let`/`var`/`function`/`class`/`enum`/`type`/`interface` declarations. */
 export function topLevelDeclarations(code: string): Declaration[] {
   const masked = maskLiterals(code)
   const declarations: Declaration[] = []
@@ -168,9 +172,11 @@ export function topLevelDeclarations(code: string): Declaration[] {
     else if (char === '}' || char === ')' || char === ']') depth--
     if (depth !== 0 || !/[a-z]/.test(char) || /[\w$]/.test(masked[i - 1] ?? '')) continue
 
-    const keyword = /^(const|let|var|function|class|async\s+function)\s+/.exec(masked.slice(i))
+    const keyword = /^(const|let|var|function|class|enum|type|interface|async\s+function)\s+/.exec(masked.slice(i))
     if (keyword === null) continue
     const rest = i + keyword[0].length
+    const exported = /\bexport\s*$/.test(masked.slice(Math.max(0, i - 16), i))
+    const base = { offset: i, keyword: keyword[1]!, exported }
     if (keyword[1] === 'const' || keyword[1] === 'let' || keyword[1] === 'var') {
       const opener = masked[rest]
       const patternEnd = opener === '{' || opener === '['
@@ -179,18 +185,97 @@ export function topLevelDeclarations(code: string): Declaration[] {
       const eq = masked.indexOf('=', patternEnd)
       const end = statementEnd(masked, eq === -1 ? patternEnd : eq + 1)
       declarations.push({
+        ...base,
         names: patternNames(code.slice(rest, patternEnd)),
         init: eq === -1 ? '' : code.slice(eq + 1, end).trim(),
-        offset: i,
+        kind: 'value',
       })
       i = end - 1
+    } else if (keyword[1] === 'type' || keyword[1] === 'interface') {
+      // `type` is only a declaration when a name and `=` or type parameters follow.
+      const name = /^([A-Za-z_$][\w$]*)\s*(?:[=<]|extends\b|\{)/.exec(masked.slice(rest))?.[1]
+      if (name !== undefined) declarations.push({ ...base, names: [name], init: '', kind: 'type' })
+      i = rest
     } else {
       const name = /^\*?\s*([A-Za-z_$][\w$]*)/.exec(masked.slice(rest))?.[1]
-      if (name !== undefined) declarations.push({ names: [name], init: '', offset: i })
+      if (name !== undefined) declarations.push({ ...base, names: [name], init: '', kind: 'value' })
       i = rest
     }
   }
   return declarations
+}
+
+export interface ImportSpecifier {
+  /** Binding name in the importing module. */
+  local: string
+  /** `default`, `*`, or the exported name. */
+  imported: string
+  typeOnly: boolean
+}
+
+export interface ParsedImport {
+  source: string
+  /** Quote character used for the module specifier. */
+  quote: string
+  typeOnly: boolean
+  specifiers: ImportSpecifier[]
+}
+
+/** Parse one `import` statement; side-effect imports return no specifiers. */
+export function parseImport(code: string): ParsedImport | null {
+  const text = code.trim().replace(/;$/, '').trim()
+  const bare = /^import\s+(['"])([^'"]+)\1$/.exec(text)
+  if (bare !== null) return { source: bare[2]!, quote: bare[1]!, typeOnly: false, specifiers: [] }
+  const match = /^import\s+(type\s+)?([\s\S]+?)\s+from\s+(['"])([^'"]+)\3$/.exec(text)
+  if (match === null) return null
+  const typeOnly = match[1] !== undefined
+  const specifiers: ImportSpecifier[] = []
+  let clause = match[2]!.trim()
+  const named = /\{([\s\S]*)\}/.exec(clause)
+  if (named !== null) {
+    for (const part of named[1]!.split(',')) {
+      const entry = part.trim()
+      if (entry === '') continue
+      const inlineType = /^type\s+/.test(entry)
+      const [imported, local = imported] = entry.replace(/^type\s+/, '').split(/\s+as\s+/).map((name) => name.trim())
+      specifiers.push({ local: local!, imported: imported!, typeOnly: typeOnly || inlineType })
+    }
+    clause = clause.replace(named[0], '')
+  }
+  for (const part of clause.split(',')) {
+    const entry = part.trim()
+    if (entry === '') continue
+    const namespace = /^\*\s+as\s+([A-Za-z_$][\w$]*)$/.exec(entry)
+    if (namespace !== null) specifiers.push({ local: namespace[1]!, imported: '*', typeOnly })
+    else if (/^[A-Za-z_$][\w$]*$/.test(entry)) specifiers.push({ local: entry, imported: 'default', typeOnly })
+  }
+  return { source: match[4]!, quote: match[3]!, typeOnly, specifiers }
+}
+
+/** Render import statements for a subset of specifiers, one line per statement. */
+export function renderImport(parsed: ParsedImport, specifiers: readonly ImportSpecifier[]): string[] {
+  const q = parsed.quote
+  const from = `from ${q}${parsed.source}${q}`
+  const lines: string[] = []
+  const namespace = specifiers.find((s) => s.imported === '*')
+  if (namespace !== undefined) lines.push(`import ${namespace.typeOnly ? 'type ' : ''}* as ${namespace.local} ${from}`)
+  const rest = specifiers.filter((s) => s.imported !== '*')
+  const types = rest.filter((s) => s.typeOnly)
+  const values = rest.filter((s) => !s.typeOnly)
+  const clause = (list: readonly ImportSpecifier[]) => {
+    const fallback = list.find((s) => s.imported === 'default')
+    const named = list
+      .filter((s) => s.imported !== 'default')
+      .map((s) => (s.imported === s.local ? s.local : `${s.imported} as ${s.local}`))
+    return [fallback?.local, named.length > 0 ? `{ ${named.join(', ')} }` : undefined].filter(Boolean).join(', ')
+  }
+  if (values.length > 0) lines.push(`import ${clause(values)} ${from}`)
+  // A type-only import may name a default or named bindings, not both.
+  const typeDefault = types.filter((s) => s.imported === 'default')
+  const typeNamed = types.filter((s) => s.imported !== 'default')
+  if (typeDefault.length > 0) lines.push(`import type ${clause(typeDefault)} ${from}`)
+  if (typeNamed.length > 0) lines.push(`import type ${clause(typeNamed)} ${from}`)
+  return lines
 }
 
 /** Split a `props` parameter such as `{ a, b = 1 }: Props` into names and type text. */

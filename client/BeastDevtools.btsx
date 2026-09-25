@@ -5,7 +5,7 @@ import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
 import { fetchFile, fetchProject, onSourceChanged } from './api.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
-import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, type ScrollTarget, type TabId } from './util.ts'
+import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
 
 module
   const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
@@ -39,6 +39,7 @@ setup
   const [project, setProject] = useState<ProjectReport | null>(null);
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<RecentRefactor | null>(null);
   const suggestionCount = project?.files.reduce((sum, entry) => sum + entry.suggestions, 0) ?? 0;
   const status = runtime.status === 'connected'
     ? `${runtime.componentCount} component${runtime.componentCount === 1 ? '' : 's'} live`
@@ -126,7 +127,7 @@ if open
         BeastLogo
         div(className="skew-4") Beast
         span.bdt-brand-sub DevTools
-      nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels")
+      nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels" className="has[:focus]:rounded-sm! rounded-full")
         each item in TABS key item.id
           button(
             ~ type="button"
@@ -171,8 +172,10 @@ if open
             ~ report={report}
             ~ loadError={loadError}
             ~ settings={settings}
+            ~ recent={recent}
             ~ onSelectFile={setFile}
             ~ onSettingsChange={setSettings}
+            ~ onRecentChange={setRecent}
             ~ )
 else
   div.bdt-root.bdt-launcher-host

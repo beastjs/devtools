@@ -153,7 +153,7 @@ else
                 ~ className={cx('bdt-tree-row', runtime.selectedId === row.node.id && 'is-selected')}
                 ~ style={{ paddingLeft: `${6 + row.depth * 14}px` }}
                 ~ onClick={() => selectRuntimeNode(row.node.id)}
-                ~ onDblClick={() => row.expandable && toggleNode(row.node.id)}
+                ~ onDoubleClick={() => row.expandable && toggleNode(row.node.id)}
                 ~ )
                 span(
                   ~ className={cx('bdt-caret', row.open && 'is-open')}
@@ -180,7 +180,7 @@ else
               fragment
                 button.bdt-link(type="button" title="Open in editor" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) #{location.path}:#{location.line}
                 .bdt-detail-actions
-                  button.bdt-button.is-primary(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
+                  button.bdt-button(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
                   button.bdt-button(type="button" onClick={() => onAnalyze(location.path)}) Analyze file
                   button.bdt-button(type="button" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) Open in editor
           .bdt-scroll

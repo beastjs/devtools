@@ -7,6 +7,7 @@ import type {
 } from 'beast-tsrx'
 import type {
   AnalyzerSettings,
+  AutoApply,
   ComponentMetrics,
   FileAnalysis,
   LineRange,
@@ -42,6 +43,8 @@ interface Host {
   declarationLine: number | null
   roots: NodeInfo[]
   insertBeforeLine: number
+  /** Scoped `style` blocks match only their owning component's elements. */
+  hasStyle: boolean
 }
 
 interface Context {
@@ -50,6 +53,7 @@ interface Context {
   lineDepths: Array<number | null>
   moduleNames: Set<string>
   takenNames: Set<string>
+  localComponents: Set<string>
 }
 
 export function analyzeDocument(
@@ -65,6 +69,7 @@ export function analyzeDocument(
     lineDepths: Array.from({ length: lines.length }, () => null),
     moduleNames: new Set(),
     takenNames: new Set([componentName]),
+    localComponents: new Set([componentName]),
   }
 
   for (const declaration of document.declarations) {
@@ -76,6 +81,7 @@ export function analyzeDocument(
       }
     } else if (declaration.kind === 'component') {
       context.takenNames.add(declaration.name)
+      context.localComponents.add(declaration.name)
     }
   }
 
@@ -93,6 +99,7 @@ export function analyzeDocument(
       declarationLine: declaration.span.start.line,
       roots: [],
       insertBeforeLine: declaration.span.start.line,
+      hasStyle: false,
     }
     host.roots = buildAll(context, host, declaration.children, 0, null, componentBindings(declaration.props, declaration.setup))
     hosts.push(host)
@@ -105,6 +112,7 @@ export function analyzeDocument(
     insertBeforeLine: Number.isFinite(firstOwnDeclaration)
       ? firstOwnDeclaration
       : (document.children[0]?.span.start.line ?? lines.length + 1),
+    hasStyle: false,
   }
   defaultHost.roots = buildAll(context, defaultHost, document.children, 0, null, componentBindings(topProps, topSetup))
   hosts.push(defaultHost)
@@ -196,6 +204,10 @@ function build(
 
   switch (node.kind) {
     case 'element': {
+      // A component tag references a binding just like an expression does.
+      if (node.isComponent) own.push(node.tag)
+      if (node.id !== null) info.values.push(`#${node.id}`)
+      for (const name of node.classes) info.values.push(`.${name}`)
       for (const attr of node.attrs) {
         if (attr.kind === 'spread') {
           own.push(attr.code)
@@ -223,6 +235,7 @@ function build(
       addGroup('fragment', node.children, depth + 1, available)
       break
     case 'style':
+      host.hasStyle = true
       groups.push({ label: 'style', children: [] })
       break
     case 'scope': {
@@ -453,6 +466,7 @@ function extractSuggestion(context: Context, info: NodeInfo): Omit<RefactorSugge
     usage: usageLine(context, info, name, props),
     insertBeforeLine: info.host.insertBeforeLine,
     occurrences: [{ startLine: info.start, endLine: info.end }],
+    ...applicability(context, [info], props, 0),
   }
 }
 
@@ -472,19 +486,23 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Array<Omit
     .filter((group) => group.length >= 2)
     .sort((a, b) => weight(b) - weight(a))
 
-  const covered: LineRange[] = []
+  // An accepted group hides the groups nested in it, except that an identical
+  // inner group still surfaces when its container's copies differ, because
+  // only identical copies can be replaced automatically.
+  const covered: Array<LineRange & { identical: boolean }> = []
   const suggestions: Array<Omit<RefactorSuggestion, 'id'>> = []
   for (const group of ranked) {
-    const inside = (info: NodeInfo) => covered.some((range) => range.startLine <= info.start && info.end <= range.endLine)
-    if (group.every(inside)) continue
-    covered.push(...group.map((info) => ({ startLine: info.start, endLine: info.end })))
+    const variants = countVariants(group)
+    const inside = (info: NodeInfo, identicalOnly: boolean) =>
+      covered.some((range) => range.startLine <= info.start && info.end <= range.endLine && (range.identical || !identicalOnly))
+    if (group.every((info) => inside(info, variants === 0))) continue
+    covered.push(...group.map((info) => ({ startLine: info.start, endLine: info.end, identical: variants === 0 })))
 
     const [first] = group as [NodeInfo, ...NodeInfo[]]
     const element = firstElement(first)
     const name = uniqueName(context, element === null ? `${first.host.name}Block` : suggestName(context, element, first))
     const props = propsFor(group)
     const lines = first.end - first.start + 1
-    const variants = countVariants(group)
     suggestions.push({
       kind: 'duplicate',
       severity: 'info',
@@ -506,9 +524,51 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Array<Omit
       usage: usageLine(context, first, name, props),
       insertBeforeLine: first.host.insertBeforeLine,
       occurrences: group.map((info) => ({ startLine: info.start, endLine: info.end })),
+      ...applicability(context, group, props, variants),
     })
   }
   return suggestions
+}
+
+/**
+ * What a section references, and whether it can be rewritten automatically.
+ * Refusals are conservative: anything that could change behavior is left to
+ * the developer.
+ */
+function applicability(
+  context: Context,
+  infos: readonly NodeInfo[],
+  props: readonly SuggestedProp[],
+  variants: number,
+): { references: string[]; autoApply: AutoApply } {
+  const [first] = infos as [NodeInfo, ...NodeInfo[]]
+  const references = new Set<string>()
+  for (const info of infos) info.uses.forEach((name) => references.add(name))
+  for (const prop of props) identifiersIn(prop.type).forEach((name) => references.add(name))
+  const lines = first.end - first.start + 1
+
+  let blocked: string | null = null
+  if (first.host.hasStyle) {
+    blocked = `${first.host.name} has a scoped style block, which would stop matching the moved elements.`
+  } else if (variants > 0) {
+    blocked = `The copies differ in ${variants} value${variants === 1 ? '' : 's'}, so replacing them with one call would change behavior.`
+  } else if (infos.some((info) => info.host !== first.host)) {
+    blocked = 'The copies live in different components, which may not share the bindings the props need.'
+  }
+
+  const locals = [...references].filter((name) => context.localComponents.has(name) && !props.some((p) => p.name === name))
+  const fileBlocked = locals.length === 0
+    ? null
+    : `Uses ${locals.join(', ')}, which ${locals.length === 1 ? 'is' : 'are'} declared in this file and cannot be imported.`
+
+  return {
+    references: [...references].sort(),
+    autoApply: {
+      target: lines >= context.settings.fileLines && fileBlocked === null ? 'file' : 'inline',
+      blocked,
+      fileBlocked,
+    },
+  }
 }
 
 function contains(outer: NodeInfo, inner: NodeInfo): boolean {

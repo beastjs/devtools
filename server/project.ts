@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import {
   BeastCompileError,
@@ -9,17 +10,23 @@ import {
   type BeastDocument,
   type SetupDeclaration,
 } from 'beast-tsrx'
+import { createOctaneCompiler } from 'octane/compiler/bundler'
 import type {
   AnalyzerSettings,
+  ApplyRequest,
+  ApplyResult,
   ComponentLocation,
   DiagnosticInfo,
   FileReport,
   FileSummary,
   HookBinding,
   ProjectReport,
+  UndoResult,
 } from '../shared/types.ts'
 import { analyzeDocument } from './analyze.ts'
+import { diffLines } from './diff.ts'
 import { buildLineMap } from './line-map.ts'
+import { planRefactor, RefactorError, type FileChange } from './refactor.ts'
 import { hookCall, topLevelDeclarations } from './source-scan.ts'
 
 const IGNORED_DIRECTORIES = new Set(['.git', '.beast', 'node_modules', 'dist', 'build', 'coverage'])
@@ -39,6 +46,14 @@ interface CompiledEntry {
   error: BeastDiagnostic | null
 }
 
+interface AppliedRefactor {
+  summary: string
+  changes: FileChange[]
+}
+
+/** How many applied refactors can still be undone. */
+const UNDO_LIMIT = 20
+
 /**
  * Compiles project `.btsx` sources on demand for the overlay. Results are
  * cached by modification time, so polling the API stays cheap.
@@ -46,6 +61,8 @@ interface CompiledEntry {
 export class BeastProject {
   readonly #options: ProjectOptions
   readonly #cache = new Map<string, CompiledEntry>()
+  readonly #applied = new Map<string, AppliedRefactor>()
+  #octane: ReturnType<typeof createOctaneCompiler> | null = null
 
   constructor(options: ProjectOptions) {
     this.#options = options
@@ -86,6 +103,7 @@ export class BeastProject {
       return {
         path: relativePath,
         absolutePath,
+        hash: contentHash(entry.source),
         source: entry.source,
         compiled: { ok: false, error: diagnosticInfo(entry.error!, entry.source) },
         analysis: null,
@@ -104,6 +122,7 @@ export class BeastProject {
     return {
       path: relativePath,
       absolutePath,
+      hash: contentHash(entry.source),
       source: entry.source,
       compiled: {
         ok: true,
@@ -112,6 +131,115 @@ export class BeastProject {
         diagnostics: diagnostics.map((diagnostic) => diagnosticInfo(diagnostic, entry.source)),
       },
       analysis: analyzeDocument(ast, entry.source, componentNameFromPath(absolutePath), settings),
+    }
+  }
+
+  /**
+   * Plan a refactor suggestion and, unless `dryRun`, write it. The suggestion
+   * is recomputed from the file on disk: the client names it but never supplies
+   * code, and every resulting file must compile through Beast and Octane
+   * before anything is written.
+   */
+  apply(request: ApplyRequest): ApplyResult {
+    const absolutePath = this.resolve(request.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    this.invalidate(absolutePath)
+    const entry = this.#compile(absolutePath)
+    if (contentHash(entry.source) !== request.hash) {
+      throw new RefactorError('The file changed since it was analyzed. Review the refreshed suggestions and try again.', 409)
+    }
+    if (entry.result === null) throw new RefactorError('The file does not compile.', 422)
+
+    const analysis = analyzeDocument(entry.result.ast, entry.source, componentNameFromPath(absolutePath), request.settings)
+    const suggestion = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
+    if (suggestion === undefined) throw new RefactorError('That suggestion no longer applies.', 409)
+
+    const plan = planRefactor({
+      absolutePath,
+      source: entry.source,
+      document: entry.result.ast,
+      suggestion,
+      target: request.target,
+      exists: existsSync,
+    })
+    for (const change of plan.changes) this.#validate(change)
+
+    const files = plan.changes.map((change) => ({
+      path: this.#relative(change.absolutePath),
+      action: change.before === null ? ('create' as const) : ('edit' as const),
+      ...diffLines(change.before === null ? [] : change.before.split('\n'), change.after.split('\n')),
+    }))
+    if (request.dryRun) return { undoId: null, component: plan.component, summary: plan.summary, files }
+
+    this.#write(plan.changes)
+    const undoId = randomUUID()
+    this.#applied.set(undoId, { summary: plan.summary, changes: plan.changes })
+    if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
+    return { undoId, component: plan.component, summary: plan.summary, files }
+  }
+
+  /** Restore the files an applied refactor touched, if nobody has edited them since. */
+  undo(id: string): UndoResult {
+    const applied = this.#applied.get(id)
+    if (applied === undefined) throw new RefactorError('Nothing to undo for that refactor.', 409)
+    for (const change of applied.changes) {
+      const current = existsSync(change.absolutePath) ? readFileSync(change.absolutePath, 'utf8') : null
+      if (current !== change.after) {
+        throw new RefactorError(`${this.#relative(change.absolutePath)} was edited after the refactor, so it was not undone.`, 409)
+      }
+    }
+    // Restore edited files first so nothing imports a file about to be removed.
+    const ordered = [...applied.changes].sort((a, b) => Number(a.before === null) - Number(b.before === null))
+    for (const change of ordered) {
+      if (change.before === null) unlinkSync(change.absolutePath)
+      else writeFileSync(change.absolutePath, change.before)
+      this.invalidate(change.absolutePath)
+    }
+    this.#applied.delete(id)
+    return { summary: `Undid: ${applied.summary}` }
+  }
+
+  #validate(change: FileChange): void {
+    const filename = change.absolutePath
+    const { code } = (() => {
+      try {
+        return compileBeastResult(change.after, { filename, componentName: componentNameFromPath(filename) })
+      } catch (error) {
+        const detail = error instanceof BeastCompileError ? formatDiagnostic(error.diagnostic, change.after) : String(error)
+        throw new RefactorError(`The refactored ${this.#relative(filename)} would not compile:\n${detail}`, 422)
+      }
+    })()
+    this.#octane ??= createOctaneCompiler({ root: this.#options.root, environment: 'client', hmr: false, dev: true })
+    try {
+      this.#octane.transform(code, filename.replace(/\.btsx$/, '.tsrx'), { environment: 'client', dev: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RefactorError(`Octane rejected the refactored ${this.#relative(filename)}: ${message}`, 422)
+    }
+  }
+
+  #write(changes: readonly FileChange[]): void {
+    for (const change of changes) {
+      const current = existsSync(change.absolutePath) ? readFileSync(change.absolutePath, 'utf8') : null
+      if (current !== change.before) {
+        throw new RefactorError(`${this.#relative(change.absolutePath)} changed while the refactor was prepared.`, 409)
+      }
+    }
+    // New files first, so the edited importer never points at a missing module.
+    const ordered = [...changes].sort((a, b) => Number(b.before === null) - Number(a.before === null))
+    const written: FileChange[] = []
+    try {
+      for (const change of ordered) {
+        writeFileSync(change.absolutePath, change.after, change.before === null ? { flag: 'wx' } : {})
+        written.push(change)
+        this.invalidate(change.absolutePath)
+      }
+    } catch (error) {
+      for (const change of written.reverse()) {
+        if (change.before === null) unlinkSync(change.absolutePath)
+        else writeFileSync(change.absolutePath, change.before)
+      }
+      throw error
     }
   }
 
@@ -178,6 +306,10 @@ export class BeastProject {
   #relative(absolutePath: string): string {
     return relative(this.#options.root, absolutePath).split(sep).join('/')
   }
+}
+
+function contentHash(source: string): string {
+  return createHash('sha1').update(source).digest('hex').slice(0, 16)
 }
 
 function diagnosticInfo(diagnostic: BeastDiagnostic, source: string): DiagnosticInfo {

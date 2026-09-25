@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'octane'
-import type { AnalyzerSettings, FileReport, FileSummary, RefactorSuggestion } from '../shared/types.ts'
+import type { AnalyzerSettings, ApplyResult, DiffLine, FileReport, FileSummary, RefactorSuggestion, RefactorTarget } from '../shared/types.ts'
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
-import { copyText, openInEditor } from './api.ts'
-import { cx, scrollTarget, type ScrollTarget } from './util.ts'
+import { applyRefactor, copyText, openInEditor, undoRefactor } from './api.ts'
+import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
 
 module
   interface RefactorPanelProps {
@@ -12,8 +12,38 @@ module
     report: FileReport | null
     loadError: string | null
     settings: AnalyzerSettings
+    recent: RecentRefactor | null
     onSelectFile: (path: string) => void
     onSettingsChange: (settings: AnalyzerSettings) => void
+    onRecentChange: (recent: RecentRefactor | null) => void
+  }
+
+  /** A refactor being reviewed: previewed as a dry run, then confirmed. */
+  interface PendingRefactor {
+    suggestionId: string
+    target: RefactorTarget
+    status: 'loading' | 'ready' | 'applying'
+    result: ApplyResult | null
+    error: string | null
+  }
+
+  function targetLabel(target: RefactorTarget, suggestion: RefactorSuggestion): string {
+    return target === 'file' ? `create ⯌` : ` hoist ✦`
+
+
+  }
+
+  function targets(suggestion: RefactorSuggestion): RefactorTarget[] {
+    if (suggestion.autoApply.blocked !== null) return []
+    const other: RefactorTarget = suggestion.autoApply.target === 'file' ? 'inline' : 'file'
+    const allowed = other === 'file' ? suggestion.autoApply.fileBlocked === null : true
+    return allowed ? [suggestion.autoApply.target, other] : [suggestion.autoApply.target]
+  }
+
+  const DIFF_SIGN: Record<DiffLine['type'], string> = { add: '+', remove: '-', context: ' ' }
+
+  function message(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
   }
 
   function tone(depth: number, limit: number): string {
@@ -40,8 +70,10 @@ module
     return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : null
   }
 
-props { files, file, report, loadError, settings, onSelectFile, onSettingsChange }: RefactorPanelProps
+props { files, file, report, loadError, settings, recent, onSelectFile, onSettingsChange, onRecentChange }: RefactorPanelProps
 setup
+  const [pending, setPending] = useState<PendingRefactor | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -62,7 +94,50 @@ setup
   useEffect(() => {
     setSelectedId(null);
     setOpenId(null);
+    setPending(null);
   }, [file]);
+  // A preview describes one version of the file; drop it once the file changes.
+  useEffect(() => {
+    setPending((value) => (value?.status === 'applying' ? value : null));
+  }, [current?.hash]);
+
+  const preview = async (suggestion: RefactorSuggestion, target: RefactorTarget) => {
+    if (current === null) return;
+    const request = { path: current.path, hash: current.hash, settings, suggestionId: suggestion.id, target };
+    setPending({ suggestionId: suggestion.id, target, status: 'loading', result: null, error: null });
+    const same = (value: PendingRefactor | null) => value?.suggestionId === suggestion.id && value.target === target;
+    try {
+      const result = await applyRefactor({ ...request, dryRun: true });
+      setPending((value) => (same(value) ? { ...value!, status: 'ready', result } : value));
+    } catch (error) {
+      setPending((value) => (same(value) ? { ...value!, status: 'ready', error: message(error) } : value));
+    }
+  };
+  const confirm = async () => {
+    if (pending === null || current === null) return;
+    const request = { path: current.path, hash: current.hash, settings, suggestionId: pending.suggestionId, target: pending.target };
+    setPending({ ...pending, status: 'applying' });
+    try {
+      const result = await applyRefactor({ ...request, dryRun: false });
+      setPending(null);
+      setSelectedId(null);
+      setOpenId(null);
+      setUndoError(null);
+      onRecentChange({ undoId: result.undoId!, summary: result.summary });
+    } catch (error) {
+      setPending({ ...pending, status: 'ready', error: message(error) });
+    }
+  };
+  const undo = async () => {
+    if (recent === null) return;
+    try {
+      await undoRefactor(recent.undoId);
+      setUndoError(null);
+      onRecentChange(null);
+    } catch (error) {
+      setUndoError(message(error));
+    }
+  };
 
 FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
 .bdt-pane
@@ -87,6 +162,22 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
         ~ value={settings.minLines}
         ~ onInput={(event) => { const minLines = readLimit(event.currentTarget.value, 2, 200); if (minLines !== null) onSettingsChange({ ...settings, minLines }); }}
         ~ )
+    label.bdt-field(title="Sections with at least this many lines move to their own .btsx file by default")
+      | New file at
+      input.bdt-input.is-number(
+        ~ type="number"
+        ~ min="2"
+        ~ max="1000"
+        ~ value={settings.fileLines}
+        ~ onInput={(event) => { const fileLines = readLimit(event.currentTarget.value, 2, 1000); if (fileLines !== null) onSettingsChange({ ...settings, fileLines }); }}
+        ~ )
+  if recent !== null
+    div(className={cx('bdt-toast', undoError !== null && 'is-error')} role="status")
+      span #{undoError ?? `✓ ${recent.summary}`}
+      .bdt-spacer
+      if undoError === null
+        button.bdt-button(type="button" onClick={undo}) Undo
+      button.bdt-icon-button(type="button" aria-label="Dismiss" onClick={() => { setUndoError(null); onRecentChange(null); }}) ×
   if loadError !== null && current === null
     .bdt-empty
       p Could not analyze #{file ?? 'the file'}: #{loadError}
@@ -148,10 +239,53 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                       span.bdt-chip-type #{': ' + prop.type}
                 .bdt-card-actions
                   button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? '🞁' : '🞃'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'Component ⮻' : 'Component ⮺'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'Usage ⮻' : 'Usage ⮺'}
-                  button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) Open ⧽
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'component ⮻' : 'component ⮺'}
+                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'usage ⮻' : 'usage ⮺'}
+                  button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) open ⧽
+                .bdt-card-actions
+                  each target, index in targets(suggestion) key target
+                    button(
+                      ~ type="button"
+                      ~ className={cx('bdt-button-critical', index === 0 && '')}
+                      ~ title={target === 'file' ? `Write ${suggestion.name}.btsx next to this file and import it` : 'Add a local component to this file'}
+                      ~ disabled={pending?.status === 'applying' || pending?.status === 'loading'}
+                      ~ onClick={() => preview(suggestion, target)}
+                      ~ )
+                      | #{targetLabel(target, suggestion)}
 
+                if suggestion.autoApply.blocked !== null
+                  p.bdt-card-note Manual only: #{suggestion.autoApply.blocked}
+                elseif suggestion.autoApply.fileBlocked !== null
+                  p.bdt-card-note Stays in this file: #{suggestion.autoApply.fileBlocked}
+                if pending !== null && pending.suggestionId === suggestion.id
+                  div.bdt-plan(role="group" aria-label="Review refactor")
+                    if pending.status === 'loading'
+                      p.bdt-muted Preparing #{targetLabel(pending.target, suggestion).toLowerCase()}…
+                    else
+                      fragment
+                        if pending.result !== null
+                          fragment
+                            p.bdt-plan-title Review · #{targetLabel(pending.target, suggestion)} · #{pending.result.files.length} file#{pending.result.files.length === 1 ? '' : 's'}
+                            each change in pending.result.files key change.path
+                              .bdt-plan-file
+                                .bdt-plan-file-head
+                                  span #{change.path}
+                                  span(className={cx('bdt-badge', change.action === 'create' ? 'is-ok' : 'is-info')}) #{change.action === 'create' ? 'new file' : 'edit'}
+                                  span.bdt-added +#{change.added}
+                                  span.bdt-removed −#{change.removed}
+                                .bdt-diff
+                                  .bdt-diff-inner
+                                    each hunk, hunkIndex in change.hunks key hunkIndex
+                                      fragment
+                                        p.bdt-diff-head @@ −#{hunk.oldStart} +#{hunk.newStart} @@
+                                        each line, lineIndex in hunk.lines key lineIndex
+                                          div(className={`bdt-diff-line is-${line.type}`}) #{DIFF_SIGN[line.type] + ' ' + line.text}
+                        if pending.error !== null
+                          pre.bdt-plan-error #{pending.error}
+                        .bdt-card-actions
+                          if pending.result !== null && pending.error === null
+                            button.bdt-button-critical(type="button" disabled={pending.status === 'applying'} onClick={confirm}) #{pending.status === 'applying' ? 'Applying…' : 'Apply changes'}
+                          button.bdt-button(type="button" disabled={pending.status === 'applying'} onClick={() => setPending(null)}) Cancel
                 if openId === suggestion.id
                   pre.bdt-pre #{applyGuide(suggestion)}
         section.bdt-pane(aria-label="Source with nesting depth")

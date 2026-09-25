@@ -11,9 +11,11 @@ export interface AnalyzerSettings {
   depthLimit: number
   /** Smallest section, in source lines, worth extracting into a component. */
   minLines: number
+  /** Sections at least this long are extracted into their own `.btsx` file by default. */
+  fileLines: number
 }
 
-export const DEFAULT_SETTINGS: AnalyzerSettings = { depthLimit: 5, minLines: 8 }
+export const DEFAULT_SETTINGS: AnalyzerSettings = { depthLimit: 5, minLines: 8, fileLines: 30 }
 
 export type Severity = 'info' | 'warning' | 'critical'
 
@@ -52,6 +54,21 @@ export interface RefactorSuggestion extends LineRange {
   insertBeforeLine: number
   /** Every structurally identical copy (duplicate suggestions only). */
   occurrences: LineRange[]
+  /** Identifiers and component tags the section references, for moving it to another file. */
+  references: string[]
+  autoApply: AutoApply
+}
+
+export type RefactorTarget = 'inline' | 'file'
+
+/** Whether the suggestion can be applied automatically, and where by default. */
+export interface AutoApply {
+  /** Default target: sections of `fileLines` or more go to their own file. */
+  target: RefactorTarget
+  /** Why the suggestion cannot be applied at all, if so. */
+  blocked: string | null
+  /** Why the section cannot move to its own file, if so. */
+  fileBlocked: string | null
 }
 
 export interface ComponentMetrics {
@@ -141,7 +158,51 @@ export interface ProjectReport {
 export interface FileReport {
   path: string
   absolutePath: string
+  /** Content hash; refactors are refused when the file changed since it was analyzed. */
+  hash: string
   source: string
   compiled: CompiledOutput
   analysis: FileAnalysis | null
+}
+
+export interface ApplyRequest {
+  path: string
+  hash: string
+  settings: AnalyzerSettings
+  suggestionId: string
+  target: RefactorTarget
+  /** Plan and validate without writing. */
+  dryRun: boolean
+}
+
+export interface DiffLine {
+  type: 'context' | 'add' | 'remove'
+  text: string
+}
+
+export interface DiffHunk {
+  oldStart: number
+  newStart: number
+  lines: DiffLine[]
+}
+
+export interface PlannedFile {
+  path: string
+  action: 'create' | 'edit'
+  added: number
+  removed: number
+  hunks: DiffHunk[]
+}
+
+export interface ApplyResult {
+  /** Undo handle; present once the change has been written. */
+  undoId: string | null
+  /** Name of the extracted component. */
+  component: string
+  summary: string
+  files: PlannedFile[]
+}
+
+export interface UndoResult {
+  summary: string
 }

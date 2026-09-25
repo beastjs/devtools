@@ -128,3 +128,9 @@ let scrollNonce = 0
 export function scrollTarget(line: number): ScrollTarget {
   return { line, nonce: ++scrollNonce }
 }
+
+/** The last applied refactor, kept by the shell so Undo survives tab switches. */
+export interface RecentRefactor {
+  undoId: string
+  summary: string
+}
