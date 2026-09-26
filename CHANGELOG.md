@@ -6,6 +6,11 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ### Added
 
+- **Element picker**: toggle it from the crosshair button or
+  <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, hover your app to see each
+  element's component and `.btsx` line, and click to open that line in your
+  editor. The dev server tags elements with `data-beast-src` and
+  `data-beast-component`. Turn tagging off with `elementPicker: false`.
 - **Editable names**: rename a suggested component (with its props interface
   and file) or a mapping's array before applying. Names are validated in the
   panel and on the dev server.

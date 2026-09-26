@@ -90,6 +90,36 @@
 .bdt-launcher-host {
   right: 16px;
   bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bdt-launcher-pick {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--bdt-line-2);
+  border-radius: 999px;
+  background: linear-gradient(145deg, #2a2b29, #111211 72%);
+  box-shadow: 0 10px 28px rgba(15, 16, 14, 0.28);
+  color: var(--bdt-muted);
+}
+
+.bdt-launcher-pick:hover {
+  color: var(--bdt-text);
+}
+
+.bdt-launcher-pick svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.bdt-root .is-picking {
+  color: var(--bdt-accent);
+  background: var(--bdt-accent-soft);
 }
 
 .bdt-launcher {
@@ -1155,11 +1185,11 @@
   width: 100%;
   height: 100vh;
   background: repeating-linear-gradient(
-    45deg,
+    33deg,
     /* slant angle: adjust for steeper/shallower lines */ transparent,
     transparent 10px,
     #18181810 10px,
-    /* line color */ #2a2a2a 12px /* line thickness: 1px wide */
+    /* line color */ #1a1a1a 12px /* line thickness: 1px wide */
   );
 }
 
@@ -1298,3 +1328,61 @@
   color: var(--bdt-bad);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Element picker. The highlight sits on top of the app, outside `.bdt-root`, */
+/* just under the overlay, and never takes pointer events.                   */
+
+.bdt-picker-box,
+.bdt-picker-label {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147482999;
+  margin: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.bdt-picker-box {
+  border: 1.5px solid #ff415a;
+  border-radius: 3px;
+  background: rgba(255, 65, 90, 0.1);
+}
+
+.bdt-picker-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: calc(100vw - 8px);
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  background: #121312;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  color: #f2f2ee;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: normal;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.bdt-picker-label strong {
+  color: #ff415a;
+  font-weight: 600;
+}
+
+.bdt-picker-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #a4a5a0;
+}
+
+.bdt-picker-box[hidden],
+.bdt-picker-label[hidden] {
+  display: none;
+}
+
+html.bdt-picking,
+html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
+  cursor: crosshair !important;
+}

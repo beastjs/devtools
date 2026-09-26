@@ -6,7 +6,7 @@ import { rspack, type Compiler, type RspackOptions } from '@rspack/core'
 import { RspackDevServer } from '@rspack/dev-server'
 import { beastOctane } from 'beast-tsrx/rspack'
 import { beastDevtools } from './rspack.ts'
-import { createApp, E2E_TIMEOUT, expectDevtools, OVERLAY_MARKER, OVERLAY_STYLES, type TestApp } from './test/dev-server.ts'
+import { createApp, E2E_TIMEOUT, expectDevtools, OVERLAY_MARKER, OVERLAY_STYLES, SOURCE_TAG, type TestApp } from './test/dev-server.ts'
 
 let app: TestApp | null = null
 afterEach(() => app?.cleanup())
@@ -37,6 +37,7 @@ test(
 
       const bundle = await (await fetch(`${origin}/main.js`)).text()
       expect(bundle).toMatch(OVERLAY_MARKER)
+      expect(bundle).toMatch(SOURCE_TAG)
       expect(await (await fetch(`${origin}/main.css`)).text()).toMatch(OVERLAY_STYLES)
 
       await expectDevtools(origin, app, '/rspack-dev-server/open-editor?fileName=')
@@ -53,7 +54,9 @@ test(
     app = createApp()
     const compiler = rspack(config(app.root))
     await run(compiler)
-    expect(readFileSync(join(app.root, 'dist/main.js'), 'utf8')).not.toMatch(OVERLAY_MARKER)
+    const bundle = readFileSync(join(app.root, 'dist/main.js'), 'utf8')
+    expect(bundle).not.toMatch(OVERLAY_MARKER)
+    expect(bundle).not.toMatch(SOURCE_TAG)
   },
   E2E_TIMEOUT,
 )

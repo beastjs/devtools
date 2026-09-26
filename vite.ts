@@ -1,6 +1,7 @@
 import { relative, resolve, sep } from 'node:path'
 import { searchForWorkspaceRoot, type Plugin } from 'vite'
 import { CLIENT_ENTRY, createDevtoolsServer, PACKAGE_ROOT, toPosix, type BeastDevtoolsOptions } from './server/devtools.js'
+import { isTaggable, tagSource } from './server/source-tags.js'
 import { API_BASE } from './shared/types.js'
 
 export type { BeastDevtoolsOptions }
@@ -45,6 +46,18 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): Plugin {
       server.watcher.on('add', devtools.notify)
       server.watcher.on('unlink', devtools.notify)
       server.httpServer?.once('close', devtools.close)
+    },
+
+    // `order: 'pre'` runs this ahead of Beast's own `.btsx` transform, which is also `enforce: 'pre'`.
+    transform: {
+      order: 'pre',
+      handler(source, id) {
+        const file = id.replace(/[?#].*$/u, '')
+        if (options.elementPicker === false || !isTaggable(file, PACKAGE_ROOT)) return null
+        const tagged = tagSource(source, file, toPosix(relative(root, file)))
+        // Lines are unchanged, so no map is needed to keep Beast's diagnostics on the right line.
+        return tagged === source ? null : { code: tagged, map: null }
+      },
     },
 
     transformIndexHtml() {

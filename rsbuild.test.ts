@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { createRsbuild } from '@rsbuild/core'
 import { beastOctane } from 'beast-tsrx/rsbuild'
 import { beastDevtools } from './rsbuild.ts'
-import { createApp, E2E_TIMEOUT, expectDevtools, OVERLAY_MARKER, OVERLAY_STYLES, type TestApp } from './test/dev-server.ts'
+import { createApp, E2E_TIMEOUT, expectDevtools, OVERLAY_MARKER, OVERLAY_STYLES, SOURCE_TAG, type TestApp } from './test/dev-server.ts'
 
 let app: TestApp | null = null
 afterEach(() => app?.cleanup())
@@ -31,6 +31,7 @@ test(
       const bundles = (await Promise.all(assets.map(async (src) => (await fetch(new URL(src, origin))).text()))).join('\n')
       expect(bundles).toMatch(OVERLAY_MARKER)
       expect(bundles).toMatch(OVERLAY_STYLES)
+      expect(bundles).toMatch(SOURCE_TAG)
 
       await expectDevtools(origin, app, '/__open-in-editor?file=')
     } finally {

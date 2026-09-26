@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import type { AddressInfo } from 'node:net'
 import { beastOctane } from 'beast-tsrx/vite'
 import { createServer } from 'vite'
-import { createApp, E2E_TIMEOUT, expectDevtools, type TestApp } from './test/dev-server.ts'
+import { createApp, E2E_TIMEOUT, expectDevtools, SOURCE_TAG, type TestApp } from './test/dev-server.ts'
 import { beastDevtools } from './vite.ts'
 
 let app: TestApp | null = null
@@ -27,6 +27,7 @@ test(
       const overlay = /<script type="module" src="([^"]*client\/mount\.ts)"/.exec(html)?.[1]
       expect(overlay).toBeDefined()
       expect((await fetch(`${origin}${overlay}`)).status).toBe(200)
+      expect((await server.transformRequest('/src/App.btsx'))?.code).toMatch(SOURCE_TAG)
 
       await expectDevtools(origin, app, '/__open-in-editor?file=')
     } finally {

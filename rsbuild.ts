@@ -1,5 +1,6 @@
 import type { RsbuildPlugin } from '@rsbuild/core'
 import { CLIENT_ENTRY, createDevtoolsServer, type BeastDevtoolsOptions, type DevtoolsServer } from './server/devtools.js'
+import { SourceTagsPlugin } from './rspack.js'
 import { API_BASE } from './shared/types.js'
 
 export type { BeastDevtoolsOptions }
@@ -25,6 +26,12 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): RsbuildPlugin
         if (config.output.target !== 'web') return config
         return mergeEnvironmentConfig(config, { source: { preEntry: [CLIENT_ENTRY] } })
       })
+
+      if (options.elementPicker !== false) {
+        api.modifyRspackConfig((config) => {
+          ;(config.plugins ??= []).push(new SourceTagsPlugin())
+        })
+      }
 
       api.onBeforeStartDevServer(({ server }) => {
         devtools = createDevtoolsServer({

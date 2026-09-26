@@ -51,6 +51,9 @@ createRoot(document.getElementById('app')!).render(App, { docsUrl: 'https://exam
 /** Matches the overlay's mount point in compiled client code. */
 export const OVERLAY_MARKER = /["']beast-devtools["']/
 
+/** Matches the element picker's source tag on the fixture's root element, as compiled into a template string. */
+export const SOURCE_TAG = /<main data-beast-src=\\+"src\/App\.btsx:\d+:1\\+" data-beast-component=\\+"App\\+"/
+
 /** Matches the overlay's stylesheet, which bundlers drop if the package hides its side effects. */
 export const OVERLAY_STYLES = /\.bdt-/
 
@@ -73,6 +76,12 @@ export async function expectDevtools(origin: string, app: TestApp, editorPrefix:
   })
   expect(editor.status).toBe(307)
   expect(editor.headers.get('location')).toBe(`${editorPrefix}${encodeURIComponent(`${app.appPath}:3:1`)}`)
+
+  // The element picker sends project-relative locations.
+  const picked = await fetch(`${origin}${API_BASE}/open-in-editor?file=${encodeURIComponent('src/App.btsx:3:1')}`, {
+    redirect: 'manual',
+  })
+  expect(picked.headers.get('location')).toBe(`${editorPrefix}${encodeURIComponent(`${app.appPath}:3:1`)}`)
 
   const events = await openEvents(origin)
   try {

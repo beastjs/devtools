@@ -3,7 +3,8 @@ import type { AnalyzerSettings, FileReport, ProjectReport } from '../shared/type
 import ComponentsPanel from './ComponentsPanel.btsx'
 import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
-import { fetchFile, fetchProject, onSourceChanged } from './api.ts'
+import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
+import { startPicker } from './picker.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
 import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
 
@@ -22,9 +23,19 @@ module
     return event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyD'
   }
 
+  /** Alt+Shift+C toggles the element picker. */
+  function isPickShortcut(event: KeyboardEvent): boolean {
+    return event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyC'
+  }
+
 component BeastLogo
   svg.bdt-logo(viewBox="0 0 16 16" fill="none" aria-hidden="true")
     path(fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d={LOGO_PATH})
+
+component PickIcon
+  svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
+    path(d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round")
+    circle(cx="8" cy="8" r="1.75" fill="currentColor")
 
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
@@ -40,6 +51,8 @@ setup
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentRefactor | null>(null);
+  const [picking, setPicking] = useState(false);
+  const pickTitle = picking ? 'Stop picking (Esc)' : 'Pick an element to open its source (Alt+Shift+C)';
   const suggestionCount = project?.files.reduce((sum, entry) => sum + entry.suggestions, 0) ?? 0;
   const status = runtime.status === 'connected'
     ? `${runtime.componentCount} component${runtime.componentCount === 1 ? '' : 's'} live`
@@ -53,6 +66,11 @@ setup
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isPickShortcut(event)) {
+        event.preventDefault();
+        setPicking((value) => !value);
+        return;
+      }
       if (!isToggleShortcut(event)) return;
       event.preventDefault();
       setOpen((value) => !value);
@@ -65,6 +83,18 @@ setup
       window.removeEventListener('resize', onResize);
     };
   }, []);
+
+  // One pick opens the element's source line and ends picking, as does Escape.
+  useEffect(() => {
+    if (!picking) return;
+    return startPicker(
+      (source) => {
+        setPicking(false);
+        openInEditor(source.path, source.line, source.column);
+      },
+      () => setPicking(false),
+    );
+  }, [picking]);
 
   // The project list refreshes whenever a .btsx file changes on disk.
   useEffect(() => {
@@ -140,6 +170,8 @@ if open
             if item.id === 'refactor' && suggestionCount > 0
               span.bdt-tab-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
       .bdt-spacer
+      button(type="button" className={cx('bdt-icon-button', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPicking((value) => !value)})
+        PickIcon
       span.bdt-status
         span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')})
         | #{status}
@@ -179,6 +211,8 @@ if open
             ~ )
 else
   div.bdt-root.bdt-launcher-host
+    button(type="button" className={cx('bdt-launcher-pick', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPicking((value) => !value)})
+      PickIcon
     button.bdt-launcher(type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
       BeastLogo
       span Beast

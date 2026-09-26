@@ -53,9 +53,12 @@ export function onSourceChanged(listener: (path: string) => void): () => void {
   return () => events.close()
 }
 
-/** Open a file at a position; the API forwards to the dev server's launch-editor endpoint. */
-export function openInEditor(absolutePath: string, line = 1, column = 1): void {
-  void fetch(`${API_BASE}/open-in-editor?file=${encodeURIComponent(`${absolutePath}:${line}:${column}`)}`)
+/**
+ * Open a file at a position; the API forwards to the dev server's launch-editor
+ * endpoint. `path` is absolute or relative to the project root.
+ */
+export function openInEditor(path: string, line = 1, column = 1): void {
+  void fetch(`${API_BASE}/open-in-editor?file=${encodeURIComponent(`${path}:${line}:${column}`)}`)
 }
 
 export async function copyText(text: string): Promise<boolean> {

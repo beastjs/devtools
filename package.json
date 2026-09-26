@@ -1,6 +1,6 @@
 {
   "name": "@beastjs/devtools",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "In-page devtools for Beast (BTSX) and Octane apps on Vite, Rspack and Rsbuild: live component state, BTSX → TSRX inspection, and automatic component extraction for deeply nested templates.",
   "license": "ISC",
   "author": "phtn",

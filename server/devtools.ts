@@ -1,6 +1,6 @@
 import { existsSync, watch, type FSWatcher } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { dirname, relative, resolve, sep } from 'node:path'
+import { dirname, extname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_SETTINGS, SOURCE_CHANGED_EVENT, type AnalyzerSettings, type ApplyRequest } from '../shared/types.js'
 import { BeastProject } from './project.js'
@@ -11,6 +11,12 @@ export interface BeastDevtoolsOptions {
   include?: string[]
   /** Default analyzer thresholds; the overlay can override them per session. */
   analyzer?: Partial<AnalyzerSettings>
+  /**
+   * Tag the DOM elements of project `.btsx` files with their component and
+   * source line, so the overlay's element picker can name them and open them
+   * in your editor. Default: `true`.
+   */
+  elementPicker?: boolean
 }
 
 export interface DevtoolsServerOptions extends BeastDevtoolsOptions {
@@ -38,6 +44,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 export const PACKAGE_ROOT =
   [resolve(HERE, '..'), resolve(HERE, '../..')].find((dir) => existsSync(resolve(dir, 'client/mount.ts'))) ?? resolve(HERE, '..')
 export const CLIENT_ENTRY = resolve(PACKAGE_ROOT, 'client/mount.ts')
+/** The Rspack pre-loader beside this module, as `.ts` from source or `.js` once built. */
+export const SOURCE_TAGS_LOADER = resolve(HERE, `source-tags-loader${extname(fileURLToPath(import.meta.url))}`)
 
 /** Editors often save with several filesystem events; the overlay refreshes once per burst. */
 const NOTIFY_DELAY_MS = 50
@@ -97,7 +105,8 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           const location = url.searchParams.get('file')
           if (location === null || location === '') return send(400, { error: 'Missing file.' })
           res.statusCode = 307
-          res.setHeader('Location', editorUrl(location))
+          // The element picker sends project-relative locations; absolute ones pass through.
+          res.setHeader('Location', editorUrl(resolve(root, location)))
           return res.end()
         }
         const settings = readSettings((name) => url.searchParams.get(name), defaults)

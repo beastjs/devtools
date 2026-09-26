@@ -5,6 +5,10 @@
 
 export const API_BASE = '/__beast-devtools/api'
 export const SOURCE_CHANGED_EVENT = 'beast-devtools:source-changed'
+/** Set on every DOM element of a project `.btsx` file in dev: its project-relative `path:line:column`. */
+export const SOURCE_ATTRIBUTE = 'data-beast-src'
+/** Set next to `SOURCE_ATTRIBUTE`: the component whose template holds the element. */
+export const COMPONENT_ATTRIBUTE = 'data-beast-component'
 
 export interface AnalyzerSettings {
   /** Template nesting depth (0 = component root) above which a line counts as too deep. */

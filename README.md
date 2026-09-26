@@ -106,6 +106,15 @@ Start the dev server, then open the panel from the **Beast** button in the
 bottom-right corner or with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>. The
 panel remembers its size, tab and settings per browser.
 
+### Picking an element
+
+Click the crosshair button (next to the **Beast** button, or in the panel's top
+bar) or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>. Hovering any element
+of your app then outlines it and shows the component that renders it and its
+`.btsx` file and line. Clicking opens that line in your editor and ends
+picking. <kbd>Esc</kbd> cancels. While picking, clicks go to the picker, not
+your app.
+
 ## Panels
 
 ### Components
@@ -210,6 +219,7 @@ Automatic refactors are conservative:
 beastDevtools({
   include: ['src'],
   analyzer: { depthLimit: 5, minLines: 8, fileLines: 30 },
+  elementPicker: true,
 })
 ```
 
@@ -219,6 +229,7 @@ beastDevtools({
 | `analyzer.depthLimit` | `5`       | Template nesting depth (0 = component root) above which lines are deep. |
 | `analyzer.minLines`   | `8`       | Smallest section, in lines, worth extracting.                           |
 | `analyzer.fileLines`  | `30`      | Sections at least this long move to their own file by default.          |
+| `elementPicker`       | `true`    | Tag elements with their component and source line for the picker.       |
 
 The project root is Vite's `root`, Rspack's `context`, or Rsbuild's root
 path. The overlay's own settings override the analyzer defaults for that
@@ -240,6 +251,12 @@ browser.
   overlay and the app share one Octane runtime: the Vite plugin dedupes
   `octane`, and Octane's Rspack and Rsbuild plugins resolve it to a single
   copy.
+- For the element picker, the plugin adds `data-beast-src="path:line:column"`
+  and `data-beast-component` attributes to every HTML element in your project's
+  `.btsx` files before Beast compiles them. Component calls are not tagged,
+  and neither are files in `node_modules`. The attributes are static, so
+  Octane compiles them into its templates at no runtime cost. Only the dev
+  server adds them.
 - Opening files in your editor goes through the dev server's own launch-editor
   endpoint, which honors the `LAUNCH_EDITOR` environment variable.
 
@@ -255,6 +272,11 @@ browser.
   each other. This is safe because the values are read at render time, but the
   import cycle is worth knowing about.
 - Imports that only the moved section used are left in the source file.
+- The picker's attributes are inserted into tagged lines, so dev-server error
+  columns on those lines can point a little past the real position. Line
+  numbers are exact.
+- The picker names the component whose template holds an element. Markup
+  passed in as children is attributed to the file that wrote it.
 
 ## Development
 
