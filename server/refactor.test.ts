@@ -90,11 +90,13 @@ describe('moving to a new file', () => {
     const [source, created] = result.changes as [RefactorPlan['changes'][0], RefactorPlan['changes'][0]]
     expect(created.absolutePath).toBe('/project/src/AppHeader.btsx')
     expect(created.before).toBeNull()
-    expect(created.after.split('\n').slice(0, 3)).toEqual([
+    expect(created.after.split('\n').slice(0, 4)).toEqual([
       "import { panels } from './App.btsx'",
       "import type { PanelId, PanelSide } from './App.btsx'",
-      'props { activeId, setActiveId, setCopiedSide }: { activeId: PanelId; setActiveId: (value: PanelId) => void; setCopiedSide: (value: PanelSide | null) => void }',
+      'module',
+      '  export interface AppHeaderProps {',
     ])
+    expect(created.after).toContain('\nprops { activeId, setActiveId, setCopiedSide }: AppHeaderProps\n')
     expect(source.after).toContain("import AppHeader from './AppHeader.btsx'")
     expect(source.after).toContain("  export type PanelId = 'language' | 'integration' | 'skills'")
     expect(source.after).toContain('  export const panels: Panel[] = [')
@@ -120,11 +122,15 @@ describe('moving to a new file', () => {
     ].join('\n')
     const result = plan(source, 'Status', (s) => s.name === 'Group', 'file', { settings: { depthLimit: 3, minLines: 4 } })
     const [edited, created] = result.changes
-    expect(created!.after.split('\n').slice(0, 4)).toEqual([
+    expect(created!.after.split('\n').slice(0, 8)).toEqual([
       'module',
       '  "use strong";',
       "import Badge from './Badge.btsx'",
-      'props { group }: { group: any }',
+      'module',
+      '  export interface GroupProps {',
+      '    group: any',
+      '  }',
+      'props { group }: GroupProps',
     ])
     expect(edited!.after).toContain('    Group(key={group.id} group={group})')
     expect(edited!.after.split('\n')[3]).toBe("import Group from './Group.btsx'")

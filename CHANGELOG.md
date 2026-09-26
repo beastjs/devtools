@@ -11,6 +11,13 @@ All notable changes to `@beastjs/devtools` are recorded here.
   Vite plugin at `@beastjs/devtools/vite`. Both leave production builds
   untouched. `vite`, `@rspack/core` and `@rsbuild/core` are optional
   peer dependencies; install the one you use.
+- **Typed props for extracted components**: refactors declare a
+  `NameProps` interface (exported when moved to its own file) whose types come
+  from the project's TypeScript at the section, including loop variables and
+  branch narrowing. Existing named types are reused, exported types from other
+  modules are imported with `import type`, and unexported types are written
+  out structurally. `typescript` is an optional peer dependency; without it,
+  types are estimated and cards say so.
 
 ### Changed
 

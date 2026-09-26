@@ -8,6 +8,7 @@ import type {
 import type {
   AnalyzerSettings,
   AutoApply,
+  TypeImport,
   ComponentMetrics,
   FileAnalysis,
   LineRange,
@@ -16,6 +17,7 @@ import type {
   SuggestedProp,
 } from '../shared/types.js'
 import { hookCall, identifiersIn, parsePropsParameter, topLevelDeclarations } from './source-scan.js'
+import { PROBE_CALL, type ProbeFile, type ProbeResult } from './types.js'
 
 /** Component-scope bindings visible at a template position, mapped to a best-effort type. */
 type Bindings = ReadonlyMap<string, string>
@@ -35,6 +37,13 @@ interface NodeInfo {
   available: Bindings
   parent: NodeInfo | null
   children: NodeInfo[]
+  /** TypeScript that recreates the control flow this node renders inside, for type probes. */
+  scope: ProbeScope | null
+}
+
+interface ProbeScope {
+  open: string
+  close: string
 }
 
 interface Host {
@@ -45,6 +54,22 @@ interface Host {
   insertBeforeLine: number
   /** Scoped `style` blocks match only their owning component's elements. */
   hasStyle: boolean
+  propsParameter: string | null
+  setupCode: string[]
+}
+
+type Draft = Omit<RefactorSuggestion, 'id'>
+
+interface Origin {
+  infos: NodeInfo[]
+  variants: number
+}
+
+export interface AnalyzeOptions {
+  /** Absolute path of the source; type probes resolve relative imports from it. */
+  sourcePath?: string
+  /** Derives prop types with TypeScript; heuristic types are kept when absent or failing. */
+  resolveTypes?: (file: ProbeFile) => ProbeResult | null
 }
 
 interface Context {
@@ -54,6 +79,9 @@ interface Context {
   moduleNames: Set<string>
   takenNames: Set<string>
   localComponents: Set<string>
+  /** Names declared at module scope, including types, for naming props interfaces. */
+  moduleTypeNames: Set<string>
+  origins: Map<Draft, Origin>
 }
 
 export function analyzeDocument(
@@ -61,6 +89,7 @@ export function analyzeDocument(
   source: string,
   componentName: string,
   settings: AnalyzerSettings,
+  options: AnalyzeOptions = {},
 ): FileAnalysis {
   const lines = source.split('\n')
   const context: Context = {
@@ -70,11 +99,15 @@ export function analyzeDocument(
     moduleNames: new Set(),
     takenNames: new Set([componentName]),
     localComponents: new Set([componentName]),
+    moduleTypeNames: new Set(),
+    origins: new Map(),
   }
 
   for (const declaration of document.declarations) {
     if (declaration.kind === 'module') {
-      for (const { names } of topLevelDeclarations(declaration.code)) names.forEach((name) => context.moduleNames.add(name))
+      for (const { names, kind } of topLevelDeclarations(declaration.code)) {
+        names.forEach((name) => (kind === 'type' ? context.moduleTypeNames : context.moduleNames).add(name))
+      }
     } else if (declaration.kind === 'import') {
       for (const name of identifiersIn(declaration.code.replace(/\bfrom\s+(['"]).*?\1/, ''))) {
         if (/^[A-Z]/.test(name)) context.takenNames.add(name)
@@ -100,6 +133,8 @@ export function analyzeDocument(
       roots: [],
       insertBeforeLine: declaration.span.start.line,
       hasStyle: false,
+      propsParameter: declaration.props?.parameter ?? null,
+      setupCode: declaration.setup.map((setup) => setup.code),
     }
     host.roots = buildAll(context, host, declaration.children, 0, null, componentBindings(declaration.props, declaration.setup))
     hosts.push(host)
@@ -113,14 +148,15 @@ export function analyzeDocument(
       ? firstOwnDeclaration
       : (document.children[0]?.span.start.line ?? lines.length + 1),
     hasStyle: false,
+    propsParameter: topProps?.parameter ?? null,
+    setupCode: topSetup.map((setup) => setup.code),
   }
   defaultHost.roots = buildAll(context, defaultHost, document.children, 0, null, componentBindings(topProps, topSetup))
   hosts.push(defaultHost)
 
-  const suggestions = [
-    ...hosts.flatMap((host) => suggestExtractions(context, host)),
-    ...suggestDuplicates(context, hosts),
-  ].map((suggestion, index) => ({ ...suggestion, id: `s${index + 1}` }))
+  const drafts = [...hosts.flatMap((host) => suggestExtractions(context, host)), ...suggestDuplicates(context, hosts)]
+  const typed = deriveTypes(context, document, drafts, options)
+  const suggestions = typed.map((suggestion, index) => ({ ...suggestion, id: `s${index + 1}` }))
 
   const components: ComponentMetrics[] = hosts.map((host) => {
     const all = host.roots.flatMap(flatten)
@@ -191,13 +227,15 @@ function build(
     available,
     parent,
     children: [],
+    scope: null,
   }
   markLines(context, node.span.start.line, node.span.end.line, depth)
 
   const own: string[] = []
   const groups: Array<{ label: string; children: NodeInfo[] }> = []
-  const addGroup = (label: string, children: readonly BeastNode[], childDepth: number, bindings: Bindings) => {
+  const addGroup = (label: string, children: readonly BeastNode[], childDepth: number, bindings: Bindings, scope: ProbeScope | null = null) => {
     const built = buildAll(context, host, children, childDepth, info, bindings)
+    for (const child of built) child.scope = scope
     groups.push({ label, children: built })
     info.children.push(...built)
   }
@@ -247,17 +285,20 @@ function build(
           for (const [name, type] of inferDeclarationTypes(declaration.names, declaration.init)) scoped.set(name, type)
         }
       }
-      addGroup('scope', node.children, depth + 1, scoped)
+      addGroup('scope', node.children, depth + 1, scoped, { open: `{\n${node.setup.map((setup) => setup.code).join('\n')}`, close: '}' })
       break
     }
     case 'if':
-      for (const branch of node.branches) {
+      node.branches.forEach((branch, index) => {
+        // Replaying earlier branches keeps TypeScript's narrowing for this one.
+        const earlier = node.branches.slice(0, index).map((previous) => `if (${previous.test}) {} else `).join('')
         markLines(context, branch.span.start.line, branch.span.end.line, depth)
         info.end = Math.max(info.end, branch.span.end.line)
         if (branch.test !== null) own.push(branch.test)
         info.values.push(branch.test ?? 'else')
-        addGroup(branch.test === null ? 'else' : 'if', branch.children, depth + 1, available)
-      }
+        const open = `${earlier}${branch.test === null ? '{' : `if (${branch.test}) {`}`
+        addGroup(branch.test === null ? 'else' : 'if', branch.children, depth + 1, available, { open, close: '}' })
+      })
       break
     case 'each': {
       own.push(node.iterable)
@@ -270,7 +311,8 @@ function build(
       )
       if (node.indexName !== null) iterated.set(node.indexName, 'number')
       if (node.key !== null) own.push(node.key)
-      addGroup('each', node.children, depth + 1, iterated)
+      const index = node.indexName === null ? '' : ` const ${node.indexName}: number = 0;`
+      addGroup('each', node.children, depth + 1, iterated, { open: `for (const ${node.itemName} of ${node.iterable}) {${index}`, close: '}' })
       if (node.emptyChildren !== null) addGroup('empty', node.emptyChildren, depth + 1, available)
       break
     }
@@ -282,7 +324,8 @@ function build(
         info.end = Math.max(info.end, branch.span.end.line)
         if (branch.test !== null) own.push(branch.test)
         info.values.push(branch.test ?? 'default')
-        addGroup('case', branch.children, depth + 2, available)
+        const label = branch.test === null ? 'default' : `case ${branch.test}`
+        addGroup('case', branch.children, depth + 2, available, { open: `switch (${node.discriminant}) { ${label}: {`, close: '} }' })
       }
       break
     case 'try': {
@@ -298,7 +341,9 @@ function build(
         const caught = new Map(available)
         const bindings = (node.catchBranch.bindings ?? '').replace(/^\(|\)$/g, '')
         for (const name of identifiersIn(bindings)) caught.set(name, 'any')
-        addGroup('catch', node.catchBranch.children, depth + 1, caught)
+        const names = [...identifiersIn(bindings)]
+        const open = names.length === 0 ? '{' : `{ const [${bindings}] = [] as unknown as [unknown, () => void];`
+        addGroup('catch', node.catchBranch.children, depth + 1, caught, { open, close: '}' })
       }
       break
     }
@@ -411,9 +456,9 @@ function propsFor(infos: readonly NodeInfo[]): SuggestedProp[] {
 // ---------------------------------------------------------------------------
 // Suggestions
 
-function suggestExtractions(context: Context, host: Host): Array<Omit<RefactorSuggestion, 'id'>> {
+function suggestExtractions(context: Context, host: Host): Draft[] {
   const { depthLimit, minLines } = context.settings
-  const suggestions: Array<Omit<RefactorSuggestion, 'id'>> = []
+  const suggestions: Draft[] = []
   const all = host.roots.flatMap(flatten)
   if (all.length === 0) return suggestions
   const hostLines = Math.max(...all.map((info) => info.end)) - Math.min(...all.map((info) => info.start)) + 1
@@ -437,7 +482,7 @@ function suggestExtractions(context: Context, host: Host): Array<Omit<RefactorSu
   return suggestions
 }
 
-function extractSuggestion(context: Context, info: NodeInfo): Omit<RefactorSuggestion, 'id'> {
+function extractSuggestion(context: Context, info: NodeInfo): Draft {
   const { depthLimit } = context.settings
   const reach = info.depth + info.height
   const excess = reach - depthLimit
@@ -446,7 +491,7 @@ function extractSuggestion(context: Context, info: NodeInfo): Omit<RefactorSugge
   const lines = info.end - info.start + 1
   const severity: Severity = excess >= 3 ? 'critical' : 'warning'
   const where = info.parent?.node.kind === 'each' ? ', repeated by a loop,' : ''
-  return {
+  const draft: Draft = {
     kind: 'extract',
     severity,
     host: info.host.name,
@@ -462,15 +507,16 @@ function extractSuggestion(context: Context, info: NodeInfo): Omit<RefactorSugge
     depth: info.depth,
     reach,
     props,
-    snippet: componentSnippet(context, info, name, props),
     usage: usageLine(context, info, name, props),
     insertBeforeLine: info.host.insertBeforeLine,
     occurrences: [{ startLine: info.start, endLine: info.end }],
-    ...applicability(context, [info], props, 0),
+    ...generated(context, [info], name, props, [], false, 0),
   }
+  context.origins.set(draft, { infos: [info], variants: 0 })
+  return draft
 }
 
-function suggestDuplicates(context: Context, hosts: readonly Host[]): Array<Omit<RefactorSuggestion, 'id'>> {
+function suggestDuplicates(context: Context, hosts: readonly Host[]): Draft[] {
   const minLines = Math.max(4, Math.ceil(context.settings.minLines / 2))
   const groups = new Map<string, NodeInfo[]>()
   for (const info of hosts.flatMap((host) => host.roots.flatMap(flatten))) {
@@ -490,7 +536,7 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Array<Omit
   // inner group still surfaces when its container's copies differ, because
   // only identical copies can be replaced automatically.
   const covered: Array<LineRange & { identical: boolean }> = []
-  const suggestions: Array<Omit<RefactorSuggestion, 'id'>> = []
+  const suggestions: Draft[] = []
   for (const group of ranked) {
     const variants = countVariants(group)
     const inside = (info: NodeInfo, identicalOnly: boolean) =>
@@ -503,7 +549,7 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Array<Omit
     const name = uniqueName(context, element === null ? `${first.host.name}Block` : suggestName(context, element, first))
     const props = propsFor(group)
     const lines = first.end - first.start + 1
-    suggestions.push({
+    const draft: Draft = {
       kind: 'duplicate',
       severity: 'info',
       host: first.host.name,
@@ -520,14 +566,106 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Array<Omit
       depth: first.depth,
       reach: first.depth + first.height,
       props,
-      snippet: componentSnippet(context, first, name, props),
       usage: usageLine(context, first, name, props),
       insertBeforeLine: first.host.insertBeforeLine,
       occurrences: group.map((info) => ({ startLine: info.start, endLine: info.end })),
-      ...applicability(context, group, props, variants),
-    })
+      ...generated(context, group, name, props, [], false, variants),
+    }
+    context.origins.set(draft, { infos: group, variants })
+    suggestions.push(draft)
   }
   return suggestions
+}
+
+/** Code and metadata that depend on the props' types, regenerated once TypeScript has derived them. */
+function generated(
+  context: Context,
+  infos: readonly NodeInfo[],
+  name: string,
+  props: readonly SuggestedProp[],
+  typeImports: readonly TypeImport[],
+  typesDerived: boolean,
+  variants: number,
+) {
+  const [first] = infos as [NodeInfo, ...NodeInfo[]]
+  const body = sectionBody(context, first)
+  const propsType = props.length === 0 ? null : propsTypeName(context, name)
+  const propsDeclaration = propsType === null
+    ? null
+    : [`interface ${propsType} {`, ...props.map((prop) => `  ${prop.name}: ${prop.type}`), '}'].join('\n')
+  return {
+    body: body.join('\n'),
+    propsType,
+    propsDeclaration,
+    typeImports: [...typeImports],
+    typesDerived,
+    snippet: componentSnippet(name, props, propsType, propsDeclaration, body),
+    ...applicability(context, infos, props, variants),
+  }
+}
+
+/**
+ * Replace heuristic prop types with the ones TypeScript infers at each
+ * section, in one batched check of a virtual module (see `./types.ts`).
+ */
+function deriveTypes(context: Context, document: BeastDocument, drafts: readonly Draft[], options: AnalyzeOptions): Draft[] {
+  const probed = drafts.filter((draft) => draft.props.length > 0)
+  if (options.resolveTypes === undefined || options.sourcePath === undefined || probed.length === 0) return [...drafts]
+
+  const ids = new Map(probed.map((draft, index) => [draft, `__beastProbe${index}`]))
+  const code: string[] = []
+  for (const declaration of document.declarations) {
+    if (declaration.kind === 'import' || declaration.kind === 'module') code.push(declaration.code)
+  }
+  for (const local of context.localComponents) {
+    if (!context.moduleNames.has(local)) code.push(`declare const ${local}: any`)
+  }
+  code.push(`declare function ${PROBE_CALL}(...values: unknown[]): void`)
+  for (const draft of probed) {
+    const [info] = context.origins.get(draft)!.infos as [NodeInfo]
+    const scopes: ProbeScope[] = []
+    for (let node: NodeInfo | null = info; node !== null; node = node.parent) if (node.scope !== null) scopes.unshift(node.scope)
+    code.push(
+      `function ${ids.get(draft)}(${info.host.propsParameter ?? ''}) {`,
+      ...info.host.setupCode,
+      ...scopes.map((scope) => scope.open),
+      `${PROBE_CALL}(${draft.props.map((prop) => prop.name).join(', ')})`,
+      ...scopes.map((scope) => scope.close).reverse(),
+      '}',
+    )
+  }
+
+  const result = options.resolveTypes({
+    sourcePath: options.sourcePath,
+    code: code.join('\n'),
+    probes: probed.map((draft) => ({ id: ids.get(draft)!, names: draft.props.map((prop) => prop.name) })),
+  })
+  if (result === null) return [...drafts]
+
+  return drafts.map((draft) => {
+    const types = result.get(ids.get(draft) ?? '')
+    if (types === undefined) return draft
+    const imports: TypeImport[] = []
+    const props = draft.props.map((prop) => {
+      const resolved = types.get(prop.name)
+      // When TypeScript only finds `any` (an unresolved import, say), a
+      // heuristic type that names something concrete is better.
+      if (resolved === undefined || (resolved.type === 'any' && !/\bany\b/.test(prop.type))) return prop
+      for (const entry of resolved.imports) {
+        if (!imports.some((existing) => existing.name === entry.name && existing.from === entry.from)) imports.push(entry)
+      }
+      return { name: prop.name, type: resolved.type }
+    })
+    const origin = context.origins.get(draft)!
+    return { ...draft, props, ...generated(context, origin.infos, draft.name, props, imports, true, origin.variants) }
+  })
+}
+
+function propsTypeName(context: Context, name: string): string {
+  const base = `${name}Props`
+  let candidate = base
+  for (let n = 2; context.moduleTypeNames.has(candidate) || context.moduleNames.has(candidate); n++) candidate = `${base}${n}`
+  return candidate
 }
 
 /**
@@ -680,26 +818,38 @@ function labelOf(node: BeastNode): string {
   return `${node.tag}${node.id === null ? '' : `#${node.id}`}${node.classes.map((c) => `.${c}`).join('')}`
 }
 
-function componentSnippet(context: Context, info: NodeInfo, name: string, props: readonly SuggestedProp[]): string {
+/** The section's source at column 0, with a loop key removed (it moves to the call site). */
+function sectionBody(context: Context, info: NodeInfo): string[] {
   const base = info.node.span.start.column - 1
   const headerEnd = info.node.span.end.line
   const key = keyAttribute(context, info)
   const body = context.lines.slice(info.start - 1, info.end).map((line, index) => {
     const indent = /^ */.exec(line)![0].length
-    // A loop key identifies the call site, so it moves to the usage line.
     const text = key !== null && info.start + index <= headerEnd
       ? line.replace(KEY_ATTRIBUTE, '').replace(/^(\s*[\w.#$-]+)\(\s*\)/, '$1')
       : line
-    return text.trim() === '' || text.trim() === '~' ? '' : `  ${text.slice(Math.min(indent, base))}`
+    return text.trim() === '' || text.trim() === '~' ? '' : text.slice(Math.min(indent, base))
   }).filter((line, index) => line !== '' || index > headerEnd - info.start)
   while (body.at(-1) === '') body.pop()
-  const header = [`component ${name}`]
-  if (props.length > 0) {
-    header.push(
-      `  props { ${props.map((p) => p.name).join(', ')} }: { ${props.map((p) => `${p.name}: ${p.type}`).join('; ')} }`,
-    )
+  return body
+}
+
+/** A local `component` declaration, preceded by a `module` block declaring its props interface. */
+function componentSnippet(
+  name: string,
+  props: readonly SuggestedProp[],
+  propsType: string | null,
+  propsDeclaration: string | null,
+  body: readonly string[],
+): string {
+  const lines: string[] = []
+  if (propsDeclaration !== null) {
+    lines.push('module', ...propsDeclaration.split('\n').map((line) => `  ${line}`), '')
   }
-  return [...header, ...body].join('\n')
+  lines.push(`component ${name}`)
+  if (propsType !== null) lines.push(`  props { ${props.map((prop) => prop.name).join(', ')} }: ${propsType}`)
+  lines.push(...body.map((line) => (line === '' ? '' : `  ${line}`)))
+  return lines.join('\n')
 }
 
 function usageLine(context: Context, info: NodeInfo, name: string, props: readonly SuggestedProp[]): string {

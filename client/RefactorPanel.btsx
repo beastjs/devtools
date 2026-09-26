@@ -233,6 +233,8 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                 p.bdt-card-reason #{suggestion.reason}
                 .bdt-card-meta
                   span.bdt-chip #{suggestion.label} in #{suggestion.host}
+                  if !suggestion.typesDerived && suggestion.props.length > 0
+                    span.bdt-chip(title="TypeScript could not be loaded from this project, so prop types are estimated") estimated types
                   each prop in suggestion.props key prop.name
                     span.bdt-chip(title={`${prop.name}: ${prop.type}`})
                       | #{prop.name}

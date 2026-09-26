@@ -105,7 +105,8 @@ describe('refactor analyzer', () => {
       { name: 'setActiveId', type: '(value: PanelId) => void' },
       { name: 'setCopiedSide', type: '(value: PanelSide | null) => void' },
     ])
-    expect(header.snippet.split('\n')[0]).toBe('component AppHeader')
+    expect(header.snippet.split('\n').slice(0, 2)).toEqual(['module', '  interface AppHeaderProps {'])
+    expect(header.snippet).toContain('\ncomponent AppHeader\n  props { activeId, setActiveId, setCopiedSide }: AppHeaderProps\n')
     expect(header.usage.trim()).toBe('AppHeader(activeId={activeId} setActiveId={setActiveId} setCopiedSide={setCopiedSide})')
   })
 
@@ -136,7 +137,7 @@ describe('refactor analyzer', () => {
     const [suggestion] = analyze(source, { depthLimit: 3, minLines: 4 }).suggestions
     expect(suggestion?.name).toBe('Group')
     expect(suggestion?.usage.trim()).toBe('Group(key={group.id} group={group})')
-    expect(suggestion?.snippet.split('\n')[2]).toBe('  .group')
+    expect(suggestion?.body.split('\n')[0]).toBe('.group')
     compilesThroughOctane(apply(source, suggestion!), 'Fixture')
   })
 

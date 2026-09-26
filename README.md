@@ -151,6 +151,21 @@ Each suggestion card can apply itself in one of two ways:
   section uses are exported from the source and imported back (type-only where
   possible), and the source imports the new component.
 
+The extracted component declares its props as an interface, `NameProps`,
+which is exported when the section moves to its own file. Each prop's type
+comes from your project's TypeScript, read at the section itself, so loop
+variables and narrowing from `if`/`switch` branches are accounted for:
+
+- A type that already has a name you can use keeps it. That covers globals,
+  module-level types in the file, and anything the file already imports.
+- A named type exported from somewhere else gets a `import type` added for it.
+- A type that is not exported anywhere, such as Octane's internal setter type,
+  is written out in full, e.g.
+  `(next: PanelId | ((prev: PanelId) => PanelId)) => void`.
+
+If TypeScript cannot be loaded from your project, types are estimated from the
+source instead, and the card is marked **estimated types**.
+
 Sections of at least **New file at** lines (default 30) default to their own
 file. Clicking a target first shows a diff of every file it will touch, and
 nothing is written until you confirm. After applying, **Undo** restores the
@@ -217,8 +232,9 @@ browser.
 - Hook values are matched to `setup` bindings by position and kind. When they
   don't line up (custom hooks, for example), the panel shows positions such as
   `#0` instead of guessing.
-- Props whose type cannot be read from the source are typed `any` in extracted
-  components.
+- A prop is only as well typed as its binding: a host prop declared as `any`
+  stays `any` in the extracted component, because types are read from
+  declarations, not from how callers use the component.
 - Moving a section that uses module-level values makes the two files import
   each other. This is safe because the values are read at render time, but the
   import cycle is worth knowing about.

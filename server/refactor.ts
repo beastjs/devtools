@@ -1,6 +1,6 @@
 import { basename, dirname, join } from 'node:path'
 import type { BeastDocument, ModuleDeclaration } from 'beast-tsrx'
-import type { LineRange, RefactorSuggestion, RefactorTarget } from '../shared/types.js'
+import type { LineRange, RefactorSuggestion, RefactorTarget, TypeImport } from '../shared/types.js'
 import { parseImport, renderImport, topLevelDeclarations, type Declaration, type ImportSpecifier } from './source-scan.js'
 
 /** A refusal with an HTTP status: 409 for stale input, 422 for refactors that cannot be done safely. */
@@ -56,11 +56,19 @@ export function planRefactor(input: PlanInput): RefactorPlan {
   return target === 'inline' ? planInline(input) : planFile(input)
 }
 
-function planInline({ absolutePath, source, suggestion }: PlanInput): RefactorPlan {
+function planInline({ absolutePath, source, document, suggestion }: PlanInput): RefactorPlan {
   const lines = source.split('\n')
+  const imported = new Set(
+    document.declarations.flatMap((d) => (d.kind === 'import' ? (parseImport(d.code)?.specifiers.map((s) => s.local) ?? []) : [])),
+  )
+  const typeImports = renderTypeImports(
+    suggestion.typeImports.filter((entry) => !imported.has(entry.name)),
+    sourceQuote(document),
+  )
   const edits: LineEdit[] = [
     ...replaceOccurrences(lines, suggestion, suggestion.name),
     { start: suggestion.insertBeforeLine, deleteCount: 0, insert: [...suggestion.snippet.split('\n'), ''] },
+    ...(typeImports.length > 0 ? [{ start: importInsertLine(document), deleteCount: 0, insert: typeImports }] : []),
   ]
   return {
     component: suggestion.name,
@@ -102,25 +110,31 @@ function planFile({ absolutePath, source, document, suggestion, exists }: PlanIn
       }
     }
   }
-  const quote = imports.length > 0 ? (parseImport(imports[0]!.code)?.quote ?? "'") : "'"
+  const quote = sourceQuote(document)
   const sourceSpecifier = `./${basename(absolutePath)}`
-  const specifiers: ImportSpecifier[] = [...exported].map(([binding, { declaration }]) => ({
-    local: binding,
-    imported: binding,
-    typeOnly: declaration.kind === 'type',
-  }))
+  const specifiers: ImportSpecifier[] = [...exported]
+    .map(([binding, { declaration }]) => ({ local: binding, imported: binding, typeOnly: declaration.kind === 'type' }))
+    .sort((a, b) => a.local.localeCompare(b.local))
   if (specifiers.length > 0) {
     header.push(...renderImport({ source: sourceSpecifier, quote, typeOnly: false, specifiers }, specifiers))
   }
 
-  const [, ...rest] = suggestion.snippet.split('\n')
-  const body = rest.map((line) => line.replace(/^ {2}/, ''))
+  header.push(...renderTypeImports(suggestion.typeImports, quote))
+
+  // The props interface is exported so callers can type what they pass.
+  const propsDeclaration = suggestion.propsDeclaration === null
+    ? []
+    : ['module', ...`export ${suggestion.propsDeclaration}`.split('\n').map((line) => `  ${line}`)]
+  const propsLine = suggestion.propsType === null
+    ? []
+    : [`props { ${suggestion.props.map((prop) => prop.name).join(', ')} }: ${suggestion.propsType}`]
   const content = [
     ...(directives.length > 0 ? ['module', ...directives.map((directive) => `  ${directive}`)] : []),
     ...header,
-    ...(body[0]?.startsWith('props ') ? [body.shift()!] : []),
-    ...(header.length > 0 || directives.length > 0 ? [''] : []),
-    ...body,
+    ...propsDeclaration,
+    ...propsLine,
+    ...(header.length + propsDeclaration.length + propsLine.length + directives.length > 0 ? [''] : []),
+    ...suggestion.body.split('\n'),
     '',
   ]
 
@@ -142,6 +156,22 @@ function planFile({ absolutePath, source, document, suggestion, exists }: PlanIn
       { absolutePath: newPath, before: null, after: content.join('\n') },
     ],
   }
+}
+
+function sourceQuote(document: BeastDocument): string {
+  const first = document.declarations.find((d) => d.kind === 'import')
+  return first === undefined ? "'" : (parseImport(first.code)?.quote ?? "'")
+}
+
+/** `import type { A, B } from '…'`, one statement per module. */
+function renderTypeImports(entries: readonly TypeImport[], quote: string): string[] {
+  const byModule = new Map<string, string[]>()
+  for (const { name, from } of entries) {
+    const names = byModule.get(from) ?? []
+    if (!names.includes(name)) names.push(name)
+    byModule.set(from, names)
+  }
+  return [...byModule].map(([from, names]) => `import type { ${names.join(', ')} } from ${quote}${from}${quote}`)
 }
 
 /** Replace every occurrence with a call, keeping each occurrence's indentation. */

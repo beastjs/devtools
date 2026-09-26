@@ -23,10 +23,11 @@ import type {
   ProjectReport,
   UndoResult,
 } from '../shared/types.js'
-import { analyzeDocument } from './analyze.js'
+import { analyzeDocument, type AnalyzeOptions } from './analyze.js'
 import { diffLines } from './diff.js'
 import { buildLineMap } from './line-map.js'
 import { planRefactor, RefactorError, type FileChange } from './refactor.js'
+import { TypeResolver } from './types.js'
 import { hookCall, topLevelDeclarations } from './source-scan.js'
 
 const IGNORED_DIRECTORIES = new Set(['.git', '.beast', 'node_modules', 'dist', 'build', 'coverage'])
@@ -63,9 +64,20 @@ export class BeastProject {
   readonly #cache = new Map<string, CompiledEntry>()
   readonly #applied = new Map<string, AppliedRefactor>()
   #octane: ReturnType<typeof createOctaneCompiler> | null = null
+  readonly #types: TypeResolver
 
   constructor(options: ProjectOptions) {
     this.#options = options
+    this.#types = new TypeResolver(options.root, (absolutePath) => {
+      if (!existsSync(absolutePath)) return null
+      const entry = this.#compile(absolutePath)
+      if (entry.result === null) return null
+      const declarations = entry.result.ast.declarations
+      return {
+        imports: declarations.flatMap((d) => (d.kind === 'import' ? [d.code] : [])),
+        moduleCode: declarations.flatMap((d) => (d.kind === 'module' ? [d.code] : [])),
+      }
+    })
   }
 
   report(settings: AnalyzerSettings): ProjectReport {
@@ -130,7 +142,7 @@ export class BeastProject {
         ...lineMap,
         diagnostics: diagnostics.map((diagnostic) => diagnosticInfo(diagnostic, entry.source)),
       },
-      analysis: analyzeDocument(ast, entry.source, componentNameFromPath(absolutePath), settings),
+      analysis: analyzeDocument(ast, entry.source, componentNameFromPath(absolutePath), settings, this.#typed(absolutePath)),
     }
   }
 
@@ -150,7 +162,13 @@ export class BeastProject {
     }
     if (entry.result === null) throw new RefactorError('The file does not compile.', 422)
 
-    const analysis = analyzeDocument(entry.result.ast, entry.source, componentNameFromPath(absolutePath), request.settings)
+    const analysis = analyzeDocument(
+      entry.result.ast,
+      entry.source,
+      componentNameFromPath(absolutePath),
+      request.settings,
+      this.#typed(absolutePath),
+    )
     const suggestion = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
     if (suggestion === undefined) throw new RefactorError('That suggestion no longer applies.', 409)
 
@@ -197,6 +215,10 @@ export class BeastProject {
     }
     this.#applied.delete(id)
     return { summary: `Undid: ${applied.summary}` }
+  }
+
+  #typed(sourcePath: string): AnalyzeOptions {
+    return { sourcePath, resolveTypes: (file) => this.#types.resolve(file) }
   }
 
   #validate(change: FileChange): void {

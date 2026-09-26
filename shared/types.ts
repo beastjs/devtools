@@ -56,7 +56,22 @@ export interface RefactorSuggestion extends LineRange {
   occurrences: LineRange[]
   /** Identifiers and component tags the section references, for moving it to another file. */
   references: string[]
+  /** Section source rebased to column 0, with a loop key moved to the call site. */
+  body: string
+  /** Name of the generated props interface, or null when the component takes no props. */
+  propsType: string | null
+  /** The props interface declaration (without `export`), or null. */
+  propsDeclaration: string | null
+  /** Type-only imports the prop types need, relative to the source file. */
+  typeImports: TypeImport[]
+  /** True when TypeScript derived the prop types; false for heuristic fallbacks. */
+  typesDerived: boolean
   autoApply: AutoApply
+}
+
+export interface TypeImport {
+  name: string
+  from: string
 }
 
 export type RefactorTarget = 'inline' | 'file'
