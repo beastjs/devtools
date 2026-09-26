@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gleamability"
+  short_description: "Rank JS/TS modules for safe Gleam migration"
+  default_prompt: "Use $gleamability to rank this JS/TS codebase’s best Gleam migration candidates and sketch the safest first port."

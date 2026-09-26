@@ -1,0 +1,19 @@
+{
+  "name": "gleamability",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Agent skill for ranking JavaScript and TypeScript modules for migration to Gleam",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"const fs = require('node:fs'); fs.copyFileSync('dist/analyze.js', 'scripts/analyze.cjs'); fs.chmodSync('scripts/analyze.cjs', 0o755)\"",
+    "test": "node --test scripts/analyze.test.cjs",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "strict": true,
+    "noImplicitAny": true,
+    "noEmitOnError": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "rootDir": "scripts/src",
+    "types": ["node"]
+  },
+  "include": ["scripts/src/**/*.ts"]
+}
