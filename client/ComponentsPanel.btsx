@@ -2,6 +2,7 @@ import { useMemo, useState, useSyncExternalStore } from 'octane'
 import type { ComponentLocation } from '../shared/types.ts'
 import { openInEditor } from './api.ts'
 import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell, type RuntimeNode } from './runtime.ts'
+import Splitter from './Splitter.btsx'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
 
 module
@@ -165,6 +166,7 @@ else
                   span.bdt-badge(style={{ marginLeft: '8px' }}) #{row.node.kind}
                 span.bdt-tree-id ##{row.node.id}
     aside.bdt-detail(aria-label="Selected component")
+      Splitter(split="detail" edge="start" label="Resize component details")
       if detail === null
         .bdt-empty
           p Select a component to inspect its state, context, and source.

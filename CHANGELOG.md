@@ -6,6 +6,14 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ### Added
 
+- **Resizable panes**: drag the edges between the file list, component
+  details, BTSX and TSRX, and suggestions and source. Widths are saved per
+  browser; double-click an edge to reset it.
+- **Smoother motion**: the panel slides in and out instead of appearing and
+  disappearing, the launcher fades aside while it is open, and the element
+  picker's outline glides from element to element, following each element's
+  corner radius. Motion is near-instant when the system asks for reduced
+  motion.
 - **Element picker**: toggle it from the crosshair button or
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, hover your app to see each
   element's component and `.btsx` line, and click to open that line in your

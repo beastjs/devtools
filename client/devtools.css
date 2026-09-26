@@ -22,6 +22,9 @@
   --bdt-info: #7cb7ff;
   --bdt-focus: #45c195;
   --bdt-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Long, soft landing for things arriving; a quicker, accelerating exit. */
+  --bdt-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --bdt-ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
   --bdt-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   position: fixed;
@@ -93,6 +96,23 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  transform-origin: 100% 100%;
+  /* Waits for the dock to start sliding away before it comes back. */
+  transition:
+    transform 420ms var(--bdt-ease-out) 120ms,
+    opacity 260ms ease-out 120ms,
+    visibility 0s;
+}
+
+.bdt-launcher-host.is-hidden {
+  transform: translateY(14px) scale(0.9);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 200ms var(--bdt-ease-in),
+    opacity 160ms ease-in,
+    visibility 0s linear 200ms;
 }
 
 .bdt-launcher-pick {
@@ -174,6 +194,31 @@
   background: var(--bdt-bg);
   border-top: 1px solid var(--bdt-line-2);
   box-shadow: 0 -18px 40px rgba(0, 0, 0, 0.25);
+  will-change: transform;
+  transition:
+    transform 460ms var(--bdt-ease-out),
+    opacity 280ms ease-out,
+    visibility 0s;
+}
+
+/* Closing keeps the dock mounted until its slide ends; see `BeastDevtools.btsx`. */
+.bdt-dock:not(.is-open) {
+  transform: translateY(calc(100% + 40px));
+  opacity: 0.6;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 280ms var(--bdt-ease-in),
+    opacity 280ms ease-in,
+    visibility 0s linear 280ms;
+}
+
+/* Where a freshly mounted dock slides in from. */
+@starting-style {
+  .bdt-dock.is-open {
+    transform: translateY(calc(100% + 40px));
+    opacity: 0.6;
+  }
 }
 
 .bdt-resize {
@@ -313,7 +358,8 @@
 /* Shared building blocks                                                     */
 
 .bdt-sidebar {
-  width: 220px;
+  position: relative;
+  width: var(--bdt-sidebar-width, 220px);
   flex: none;
   border-right: 1px solid var(--bdt-line);
   display: flex;
@@ -324,11 +370,70 @@
 }
 
 .bdt-pane {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Drag handle on a pane edge: invisible until hovered, then an accent line. */
+.bdt-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.bdt-splitter.is-start {
+  left: -1px;
+}
+
+.bdt-splitter.is-end {
+  right: -1px;
+}
+
+.bdt-splitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--bdt-accent);
+  opacity: 0;
+  transform: scaleY(0.6);
+  transition:
+    opacity 180ms ease,
+    transform 260ms var(--bdt-ease-out);
+}
+
+.bdt-splitter.is-start::after {
+  left: 0;
+}
+
+.bdt-splitter.is-end::after {
+  right: 0;
+}
+
+.bdt-splitter:hover::after,
+.bdt-splitter.is-dragging::after {
+  opacity: 1;
+  transform: none;
+  transition-delay: 80ms;
+}
+
+.bdt-splitter.is-dragging::after {
+  transition-delay: 0s;
+}
+
+html.bdt-resizing,
+html.bdt-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .bdt-toolbar {
@@ -647,8 +752,9 @@
 }
 
 .bdt-detail {
-  width: 44%;
-  min-width: 280px;
+  position: relative;
+  width: calc(var(--bdt-detail-share, 0.44) * 100%);
+  min-width: 200px;
   flex: none;
   border-left: 1px solid var(--bdt-line);
   display: flex;
@@ -904,7 +1010,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, calc(var(--bdt-inspector-share, 0.5) * 100%)) minmax(0, 1fr);
 }
 
 .bdt-split > .bdt-pane + .bdt-pane {
@@ -1031,7 +1137,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(300px, 42%) 1fr;
+  grid-template-columns: minmax(0, calc(var(--bdt-refactor-share, 0.42) * 100%)) minmax(0, 1fr);
 }
 
 .bdt-suggestions {
@@ -1143,6 +1249,10 @@
 @media (max-width: 760px) {
   .bdt-body {
     flex-direction: column;
+  }
+
+  .bdt-splitter {
+    display: none;
   }
 
   .bdt-sidebar {
@@ -1349,6 +1459,28 @@
   background: rgba(255, 65, 90, 0.1);
 }
 
+/* The box and label glide between elements; `is-snapping` places them without gliding. */
+.bdt-picker-box,
+.bdt-picker-label {
+  opacity: 0;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 160ms ease,
+    opacity 120ms ease;
+}
+
+.bdt-picker-box.is-visible,
+.bdt-picker-label.is-visible {
+  opacity: 1;
+}
+
+.bdt-picker-box.is-snapping,
+.bdt-picker-label.is-snapping {
+  transition: opacity 120ms ease;
+}
+
 .bdt-picker-label {
   display: flex;
   align-items: baseline;
@@ -1377,12 +1509,20 @@
   color: #a4a5a0;
 }
 
-.bdt-picker-box[hidden],
-.bdt-picker-label[hidden] {
-  display: none;
-}
 
 html.bdt-picking,
 html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   cursor: crosshair !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Near-instant rather than none, so the dock's `transitionend` still unmounts it. */
+  .bdt-dock,
+  .bdt-launcher-host,
+  .bdt-splitter::after,
+  .bdt-picker-box,
+  .bdt-picker-label {
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+  }
 }

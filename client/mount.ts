@@ -1,5 +1,6 @@
 import { createRoot } from 'octane'
 import BeastDevtools from './BeastDevtools.btsx'
+import { applyLayout } from './layout.ts'
 import './devtools.css'
 
 const HOST_ID = 'beast-devtools'
@@ -8,6 +9,7 @@ function mount(): void {
   if (document.getElementById(HOST_ID) !== null) return
   const host = document.createElement('div')
   host.id = HOST_ID
+  applyLayout(host)
   document.body.append(host)
   createRoot(host).render(BeastDevtools, {})
 }

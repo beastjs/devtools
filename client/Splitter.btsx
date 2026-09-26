@@ -1,0 +1,22 @@
+import { resetSplit, startSplit, type SplitId } from './layout.ts'
+import { cx } from './util.ts'
+
+module
+  interface SplitterProps {
+    split: SplitId
+    /** The edge of its pane the handle sits on. */
+    edge: 'start' | 'end'
+    label: string
+  }
+
+props { split, edge, label }: SplitterProps
+
+div(
+  ~ role="separator"
+  ~ aria-orientation="vertical"
+  ~ aria-label={label}
+  ~ title="Drag to resize · double-click to reset"
+  ~ className={cx('bdt-splitter', `is-${edge}`)}
+  ~ onPointerDown={(event) => startSplit(event, split)}
+  ~ onDoubleClick={(event) => resetSplit(event, split)}
+  ~ )

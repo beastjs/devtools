@@ -103,8 +103,11 @@ alone.
 ### Opening the panel
 
 Start the dev server, then open the panel from the **Beast** button in the
-bottom-right corner or with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>. The
-panel remembers its size, tab and settings per browser.
+bottom-right corner or with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>. Drag
+its top edge to change its height, and drag the edges between its panes (the
+file list, component details, BTSX and TSRX, suggestions and source) to resize
+them; double-click an edge to reset it. The panel remembers its size, pane
+widths, tab and settings per browser.
 
 ### Picking an element
 

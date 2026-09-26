@@ -1,4 +1,5 @@
 import type { FileSummary } from '../shared/types.ts'
+import Splitter from './Splitter.btsx'
 import { cx } from './util.ts'
 
 module
@@ -33,3 +34,4 @@ nav.bdt-sidebar(aria-label="Beast source files")
         else
           span.bdt-badge.is-ok(title={`Max depth ${file.maxDepth}`}) ok
     div.infinite-lines
+  Splitter(split="sidebar" edge="end" label="Resize file list")

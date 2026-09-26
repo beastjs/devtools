@@ -3,6 +3,7 @@ import type { FileReport, FileSummary } from '../shared/types.ts'
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
 import { openInEditor } from './api.ts'
+import Splitter from './Splitter.btsx'
 import { scrollTarget, type ScrollTarget } from './util.ts'
 
 module
@@ -110,6 +111,7 @@ FileList(files={files} active={file} metrics={false} onSelect={onSelectFile})
             ~ onLeave={() => setHover(null)}
             ~ )
         section.bdt-pane(aria-label="Generated TSRX")
+          Splitter(split="inspector" edge="start" label="Resize BTSX and TSRX panes")
           .bdt-pane-head
             span Generated TSRX
             if compiled?.ok

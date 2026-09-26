@@ -40,6 +40,8 @@ component PickIcon
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [open, setOpen] = useState(initial.open);
+  // The dock stays mounted after closing until its slide-out ends.
+  const [docked, setDocked] = useState(initial.open);
   const [tab, setTab] = useState<TabId>(initial.tab);
   const [height, setHeight] = useState(initial.height);
   const [file, setFile] = useState<string | null>(initial.file);
@@ -83,6 +85,16 @@ setup
       window.removeEventListener('resize', onResize);
     };
   }, []);
+
+  useEffect(() => {
+    if (open) setDocked(true);
+  }, [open]);
+
+  // `visibility` flips only once the slide-out ends, and it always transitions, even
+  // when a close interrupts the slide-in before the dock has moved.
+  const onDockTransitionEnd = (event: TransitionEvent) => {
+    if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
+  };
 
   // One pick opens the element's source line and ends picking, as does Escape.
   useEffect(() => {
@@ -144,8 +156,14 @@ setup
     setTab('refactor');
   };
 
-if open
-  section.bdt-root.bdt-dock(aria-label="Beast DevTools" style={{ height: `${height}px` }})
+if open || docked
+  section(
+    ~ aria-label="Beast DevTools"
+    ~ aria-hidden={open ? undefined : 'true'}
+    ~ className={cx('bdt-root', 'bdt-dock', open && 'is-open')}
+    ~ style={{ height: `${height}px` }}
+    ~ onTransitionEnd={onDockTransitionEnd}
+    ~ )
     div.bdt-resize(
       ~ role="separator"
       ~ aria-orientation="horizontal"
@@ -209,11 +227,10 @@ if open
             ~ onSettingsChange={setSettings}
             ~ onRecentChange={setRecent}
             ~ )
-else
-  div.bdt-root.bdt-launcher-host
-    button(type="button" className={cx('bdt-launcher-pick', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPicking((value) => !value)})
-      PickIcon
-    button.bdt-launcher(type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
-      BeastLogo
-      span Beast
-      span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')} aria-label={status})
+div(className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
+  button(type="button" className={cx('bdt-launcher-pick', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPicking((value) => !value)})
+    PickIcon
+  button.bdt-launcher(type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
+    BeastLogo
+    span Beast
+    span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')} aria-label={status})

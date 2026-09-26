@@ -3,6 +3,7 @@ import type { AnalyzerSettings, ApplyResult, DiffLine, FileReport, FileSummary, 
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
 import { applyRefactor, copyText, openInEditor, undoRefactor } from './api.ts'
+import Splitter from './Splitter.btsx'
 import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
 
 module
@@ -324,6 +325,7 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                 if openId === suggestion.id
                   pre.bdt-pre #{applyGuide(suggestion)}
         section.bdt-pane(aria-label="Source with nesting depth")
+          Splitter(split="refactor" edge="start" label="Resize suggestions and source")
           .bdt-pane-head
             span Nesting depth per line
             .bdt-spacer
