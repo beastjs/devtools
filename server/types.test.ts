@@ -123,3 +123,83 @@ describe('derived prop types', () => {
     expect(props).toEqual({ index: 'number', item: 'Item' })
   })
 })
+
+describe('mapping repeated siblings', () => {
+  const nav = () => {
+    const path = join(scratch, 'Nav.btsx')
+    writeFileSync(path, [
+      "import { useState } from 'octane'",
+      "setup const [active, setActive] = useState('home');",
+      '',
+      'nav',
+      '  ul.links',
+      '    li',
+      '      a(href="/" title="Start") Home',
+      '    li',
+      '      a(href="/docs" title="Read") Docs',
+      '    li',
+      '      a(href="/blog" title="News") Blog',
+      '  .tabs',
+      "    button(type=\"button\" className={active === 'home' ? 'on' : ''} onClick={() => setActive('home')}) Home",
+      "    button(type=\"button\" className={active === 'docs' ? 'on' : ''} onClick={() => setActive('docs')}) Docs",
+      "    button(type=\"button\" className={active === 'blog' ? 'on' : ''} onClick={() => setActive('blog')}) Blog",
+      '',
+    ].join('\n'))
+    return path
+  }
+
+  test('constant values become a module array keyed by a unique field', () => {
+    const path = nav()
+    const { analysis, plan } = analyzeFile(path)
+    const map = analysis.suggestions.find((s) => s.kind === 'map' && s.mapping?.placement === 'module')!
+    expect(map.name).toBe('items')
+    expect(map.mapping?.key).toBe('item.href')
+    const after = plan('items', 'inline').changes[0]!.after
+    expect(after).toContain("  const items = [\n    { href: \"/\", title: \"Start\", text: 'Home' },")
+    expect(after).toContain('    each item in items key item.href\n      li\n        a(href={item.href} title={item.title}) #{item.text}')
+    expectCompiles(path, after)
+  })
+
+  test('values that read component state stay inline in the each header', () => {
+    const path = nav()
+    const { analysis, plan } = analyzeFile(path)
+    const map = analysis.suggestions.find((s) => s.kind === 'map' && s.mapping?.placement === 'inline')!
+    expect(map.autoApply.fileBlocked).not.toBeNull()
+    const after = plan(map.name, 'inline').changes[0]!.after
+    expect(after).toContain("      ~ { className: active === 'home' ? 'on' : '', onClick: () => setActive('home'), text: 'Home' },")
+    expect(after).toContain('      ~ ] key button.text\n      button(type="button" className={button.className} onClick={button.onClick}) #{button.text}')
+    expectCompiles(path, after)
+  })
+
+  test('differing props of copies are typed from each copy', () => {
+    const { analysis } = analyzeFile(join(ROOT, 'test/fixtures/App.btsx'))
+    const copy = analysis.suggestions.find((s) => s.kind === 'duplicate')!
+    expect(Object.fromEntries(copy.props.map((p) => [p.name, p.type]))).toMatchObject({
+      className: 'string',
+      onClick: '() => Promise<void>',
+      text: "'Copied' | 'Copy'",
+    })
+  })
+})
+
+describe('renaming before applying', () => {
+  test('a chosen name renames the component, its props interface, and every call', async () => {
+    const { renameSuggestion } = await import('./analyze.ts')
+    const { analysis } = analyzeFile(join(ROOT, 'test/fixtures/App.btsx'))
+    const renamed = renameSuggestion(analysis.suggestions.find((s) => s.name === 'LeftArticle')!, 'InputCard')
+    expect(renamed.propsType).toBe('InputCardProps')
+    expect(renamed.snippet).toContain('interface InputCardProps {')
+    expect(renamed.snippet).toContain('component InputCard\n  props { active, copyNote, copiedSide }: InputCardProps')
+    expect(renamed.usages[0]).toStartWith('InputCard(')
+  })
+
+  test('a chosen array name renames the mapping', async () => {
+    const { renameSuggestion } = await import('./analyze.ts')
+    const path = join(scratch, 'Links.btsx')
+    writeFileSync(path, ['ul', '  li Home', '  li Docs', '  li Blog', ''].join('\n'))
+    const { analysis } = analyzeFile(path)
+    const renamed = renameSuggestion(analysis.suggestions.find((s) => s.kind === 'map')!, 'pages')
+    expect(renamed.usage).toBe('  each item in pages key item.text\n    li #{item.text}')
+    expect(renamed.snippet).toContain('const pages = [')
+  })
+})

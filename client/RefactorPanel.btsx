@@ -25,9 +25,19 @@ module
     status: 'loading' | 'ready' | 'applying'
     result: ApplyResult | null
     error: string | null
+    name: string
+  }
+
+  /** Why a chosen name would be refused, or null when it is usable. */
+  function nameIssue(suggestion: RefactorSuggestion, name: string): string | null {
+    const component = suggestion.mapping === null
+    if (name.trim() === '') return 'Enter a name'
+    const pattern = component ? /^[A-Z][A-Za-z0-9_$]*$/ : /^[a-z_$][A-Za-z0-9_$]*$/
+    return pattern.test(name.trim()) ? null : component ? 'Use PascalCase, like UserCard' : 'Use a camelCase name, like items'
   }
 
   function targetLabel(target: RefactorTarget, suggestion: RefactorSuggestion): string {
+    if (suggestion.mapping !== null) return 'map ⧉'
     return target === 'file' ? `create ⯌` : ` hoist ✦`
 
 
@@ -35,6 +45,7 @@ module
 
   function targets(suggestion: RefactorSuggestion): RefactorTarget[] {
     if (suggestion.autoApply.blocked !== null) return []
+    if (suggestion.mapping !== null) return ['inline']
     const other: RefactorTarget = suggestion.autoApply.target === 'file' ? 'inline' : 'file'
     const allowed = other === 'file' ? suggestion.autoApply.fileBlocked === null : true
     return allowed ? [suggestion.autoApply.target, other] : [suggestion.autoApply.target]
@@ -51,6 +62,7 @@ module
   }
 
   function kindLabel(suggestion: RefactorSuggestion): string {
+    if (suggestion.mapping !== null) return `${suggestion.mapping.items.length}× repeated`
     return suggestion.kind === 'extract' ? '✦' : `${suggestion.occurrences.length}× same shape`
   }
 
@@ -72,6 +84,13 @@ module
 
 props { files, file, report, loadError, settings, recent, onSelectFile, onSettingsChange, onRecentChange }: RefactorPanelProps
 setup
+  const [names, setNames] = useState<Record<string, string>>({});
+  const nameOf = (suggestion: RefactorSuggestion) => names[suggestion.id] ?? suggestion.name;
+  const rename = (suggestion: RefactorSuggestion, name: string) => {
+    setNames((value) => ({ ...value, [suggestion.id]: name }));
+    // A preview was made for the old name.
+    setPending((value) => (value?.suggestionId === suggestion.id && value.status !== 'applying' ? null : value));
+  };
   const [pending, setPending] = useState<PendingRefactor | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -99,12 +118,14 @@ setup
   // A preview describes one version of the file; drop it once the file changes.
   useEffect(() => {
     setPending((value) => (value?.status === 'applying' ? value : null));
+    setNames({});
   }, [current?.hash]);
 
   const preview = async (suggestion: RefactorSuggestion, target: RefactorTarget) => {
     if (current === null) return;
-    const request = { path: current.path, hash: current.hash, settings, suggestionId: suggestion.id, target };
-    setPending({ suggestionId: suggestion.id, target, status: 'loading', result: null, error: null });
+    const name = nameOf(suggestion).trim();
+    const request = { path: current.path, hash: current.hash, settings, suggestionId: suggestion.id, target, name };
+    setPending({ suggestionId: suggestion.id, target, status: 'loading', result: null, error: null, name });
     const same = (value: PendingRefactor | null) => value?.suggestionId === suggestion.id && value.target === target;
     try {
       const result = await applyRefactor({ ...request, dryRun: true });
@@ -115,7 +136,7 @@ setup
   };
   const confirm = async () => {
     if (pending === null || current === null) return;
-    const request = { path: current.path, hash: current.hash, settings, suggestionId: pending.suggestionId, target: pending.target };
+    const request = { path: current.path, hash: current.hash, settings, suggestionId: pending.suggestionId, target: pending.target, name: pending.name };
     setPending({ ...pending, status: 'applying' });
     try {
       const result = await applyRefactor({ ...request, dryRun: false });
@@ -227,7 +248,19 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                 ~ )
                 .bdt-card-head
                   span(className={cx('bdt-severity', `is-${suggestion.severity}`)} title={suggestion.severity})
-                  span.bdt-card-title #{suggestion.name}
+                  if targets(suggestion).length > 0
+                    input(
+                      ~ className={cx('bdt-card-title', 'bdt-card-title-input', nameIssue(suggestion, nameOf(suggestion)) !== null && 'is-invalid')}
+                      ~ value={nameOf(suggestion)}
+                      ~ aria-label={suggestion.mapping === null ? 'Component name' : suggestion.mapping.placement === 'module' ? 'Array name' : 'Loop item name'}
+                      ~ title={nameIssue(suggestion, nameOf(suggestion)) ?? 'Rename before applying'}
+                      ~ spellcheck="false"
+                      ~ autocomplete="off"
+                      ~ onClick={(event) => event.stopPropagation()}
+                      ~ onInput={(event) => rename(suggestion, event.currentTarget.value)}
+                      ~ )
+                  else
+                    span.bdt-card-title #{suggestion.name}
                   span(className={cx('bdt-badge', suggestion.kind === 'extract' ? 'is-warn' : 'is-info')}) #{kindLabel(suggestion)}
                   span.bdt-dim.bdt-metric-label L#{suggestion.startLine}–#{suggestion.endLine}
                 p.bdt-card-reason #{suggestion.reason}
@@ -249,15 +282,15 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                     button(
                       ~ type="button"
                       ~ className={cx('bdt-button-critical', index === 0 && '')}
-                      ~ title={target === 'file' ? `Write ${suggestion.name}.btsx next to this file and import it` : 'Add a local component to this file'}
-                      ~ disabled={pending?.status === 'applying' || pending?.status === 'loading'}
+                      ~ title={suggestion.mapping !== null ? 'Render the repeated elements from an array with each' : target === 'file' ? `Write ${nameOf(suggestion).trim()}.btsx next to this file and import it` : 'Add a local component to this file'}
+                      ~ disabled={pending?.status === 'applying' || pending?.status === 'loading' || nameIssue(suggestion, nameOf(suggestion)) !== null}
                       ~ onClick={() => preview(suggestion, target)}
                       ~ )
                       | #{targetLabel(target, suggestion)}
 
                 if suggestion.autoApply.blocked !== null
                   p.bdt-card-note Manual only: #{suggestion.autoApply.blocked}
-                elseif suggestion.autoApply.fileBlocked !== null
+                elseif suggestion.autoApply.fileBlocked !== null && suggestion.mapping === null
                   p.bdt-card-note Stays in this file: #{suggestion.autoApply.fileBlocked}
                 if pending !== null && pending.suggestionId === suggestion.id
                   div.bdt-plan(role="group" aria-label="Review refactor")

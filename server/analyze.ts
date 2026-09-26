@@ -8,6 +8,7 @@ import type {
 import type {
   AnalyzerSettings,
   AutoApply,
+  Mapping,
   TypeImport,
   ComponentMetrics,
   FileAnalysis,
@@ -16,7 +17,8 @@ import type {
   Severity,
   SuggestedProp,
 } from '../shared/types.js'
-import { hookCall, identifiersIn, parsePropsParameter, topLevelDeclarations } from './source-scan.js'
+import { attributeValue, replaceSlots, scanSlots, type Slot, type SlotKind, type SlotValue } from './slots.js'
+import { hookCall, identifiersIn, parsePropsParameter, patternNames, topLevelDeclarations } from './source-scan.js'
 import { PROBE_CALL, type ProbeFile, type ProbeResult } from './types.js'
 
 /** Component-scope bindings visible at a template position, mapped to a best-effort type. */
@@ -37,6 +39,8 @@ interface NodeInfo {
   available: Bindings
   parent: NodeInfo | null
   children: NodeInfo[]
+  /** Children split by branch (if/else arms, loop body, …); siblings live in one group. */
+  groups: NodeInfo[][]
   /** TypeScript that recreates the control flow this node renders inside, for type probes. */
   scope: ProbeScope | null
 }
@@ -62,7 +66,23 @@ type Draft = Omit<RefactorSuggestion, 'id'>
 
 interface Origin {
   infos: NodeInfo[]
-  variants: number
+  shape: Shape
+  params: Param[]
+}
+
+/** How a suggestion's component differs from the plain section: a rewritten body and a refusal. */
+interface Shape {
+  body?: string[]
+  uses?: ReadonlySet<string>
+  blocked: string | null
+}
+
+/** A value that differs between copies and becomes a prop (or an item field). */
+interface Param {
+  name: string
+  kind: SlotKind
+  /** The value in each copy, in order. */
+  values: SlotValue[]
 }
 
 export interface AnalyzeOptions {
@@ -82,6 +102,8 @@ interface Context {
   /** Names declared at module scope, including types, for naming props interfaces. */
   moduleTypeNames: Set<string>
   origins: Map<Draft, Origin>
+  /** Every JavaScript identifier the file binds or reads, so generated names never collide. */
+  words: Set<string>
 }
 
 export function analyzeDocument(
@@ -101,6 +123,7 @@ export function analyzeDocument(
     localComponents: new Set([componentName]),
     moduleTypeNames: new Set(),
     origins: new Map(),
+    words: new Set(),
   }
 
   for (const declaration of document.declarations) {
@@ -154,7 +177,16 @@ export function analyzeDocument(
   defaultHost.roots = buildAll(context, defaultHost, document.children, 0, null, componentBindings(topProps, topSetup))
   hosts.push(defaultHost)
 
-  const drafts = [...hosts.flatMap((host) => suggestExtractions(context, host)), ...suggestDuplicates(context, hosts)]
+  for (const info of hosts.flatMap((host) => host.roots.flatMap(flatten))) {
+    info.uses.forEach((name) => context.words.add(name))
+    info.available.forEach((_type, name) => context.words.add(name))
+  }
+  for (const name of [...context.moduleNames, ...context.moduleTypeNames, ...context.takenNames]) context.words.add(name)
+  const extractions = hosts.flatMap((host) => suggestExtractions(context, host))
+  const maps = suggestMaps(context, hosts)
+  // A run of repeated siblings is better rendered from an array than merged into a component.
+  const insideMap = (info: NodeInfo) => maps.some((map) => map.startLine <= info.start && info.end <= map.endLine)
+  const drafts = [...extractions, ...suggestDuplicates(context, hosts, insideMap), ...maps]
   const typed = deriveTypes(context, document, drafts, options)
   const suggestions = typed.map((suggestion, index) => ({ ...suggestion, id: `s${index + 1}` }))
 
@@ -227,6 +259,7 @@ function build(
     available,
     parent,
     children: [],
+    groups: [],
     scope: null,
   }
   markLines(context, node.span.start.line, node.span.end.line, depth)
@@ -237,6 +270,7 @@ function build(
     const built = buildAll(context, host, children, childDepth, info, bindings)
     for (const child of built) child.scope = scope
     groups.push({ label, children: built })
+    info.groups.push(built)
     info.children.push(...built)
   }
 
@@ -508,15 +542,17 @@ function extractSuggestion(context: Context, info: NodeInfo): Draft {
     reach,
     props,
     usage: usageLine(context, info, name, props),
+    usages: [callFor(context, info, name, props, [], 0)],
     insertBeforeLine: info.host.insertBeforeLine,
     occurrences: [{ startLine: info.start, endLine: info.end }],
-    ...generated(context, [info], name, props, [], false, 0),
+    mapping: null,
+    ...generated(context, [info], name, props, [], false, { blocked: null }),
   }
-  context.origins.set(draft, { infos: [info], variants: 0 })
+  context.origins.set(draft, { infos: [info], shape: { blocked: null }, params: [] })
   return draft
 }
 
-function suggestDuplicates(context: Context, hosts: readonly Host[]): Draft[] {
+function suggestDuplicates(context: Context, hosts: readonly Host[], skip: (info: NodeInfo) => boolean): Draft[] {
   const minLines = Math.max(4, Math.ceil(context.settings.minLines / 2))
   const groups = new Map<string, NodeInfo[]>()
   for (const info of hosts.flatMap((host) => host.roots.flatMap(flatten))) {
@@ -542,12 +578,31 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Draft[] {
     const inside = (info: NodeInfo, identicalOnly: boolean) =>
       covered.some((range) => range.startLine <= info.start && info.end <= range.endLine && (range.identical || !identicalOnly))
     if (group.every((info) => inside(info, variants === 0))) continue
+    if (group.every(skip)) continue
     covered.push(...group.map((info) => ({ startLine: info.start, endLine: info.end, identical: variants === 0 })))
 
     const [first] = group as [NodeInfo, ...NodeInfo[]]
     const element = firstElement(first)
     const name = uniqueName(context, element === null ? `${first.host.name}Block` : suggestName(context, element, first))
-    const props = propsFor(group)
+    let props = propsFor(group)
+    let params: Param[] = []
+    let shape: Shape = { blocked: null }
+    if (variants > 0) {
+      // Values that differ between copies become props, so each call passes its own.
+      const result = parameterize(context, group, (param) => param, reservedNames(context, first))
+      if ('blocked' in result) {
+        shape = { blocked: result.blocked }
+      } else {
+        params = result.params
+        const uses = bodyUses(result.body)
+        const shared = [...uses]
+          .filter((use) => first.available.has(use) && !params.some((param) => param.name === use))
+          .map((use) => ({ name: use, type: first.available.get(use)! }))
+        props = [...shared, ...params.map((param) => ({ name: param.name, type: heuristicParamType(param) }))]
+        shape = { body: result.body.split('\n'), uses, blocked: null }
+      }
+    }
+    const shared = props.filter((prop) => !params.some((param) => param.name === prop.name))
     const lines = first.end - first.start + 1
     const draft: Draft = {
       kind: 'duplicate',
@@ -559,19 +614,23 @@ function suggestDuplicates(context: Context, hosts: readonly Host[]): Draft[] {
         `${group.length} structurally identical blocks of ${lines} lines. ` +
         (variants === 0
           ? `They are identical, so one ${name} can replace every copy.`
-          : `They differ in ${variants} attribute or text value${variants === 1 ? '' : 's'}; pass those as props to one ${name}.`),
+          : params.length > 0
+            ? `They differ in ${params.length} value${params.length === 1 ? '' : 's'}, which become${params.length === 1 ? 's a prop' : ' props'} of one ${name}: ${params.map((param) => param.name).join(', ')}.`
+            : `They differ in ${variants} attribute or text value${variants === 1 ? '' : 's'}.`),
       startLine: first.start,
       endLine: first.end,
       lines,
       depth: first.depth,
       reach: first.depth + first.height,
       props,
-      usage: usageLine(context, first, name, props),
+      usage: ' '.repeat(first.node.span.start.column - 1) + callFor(context, first, name, shared, params, 0),
+      usages: group.map((info, occurrence) => callFor(context, info, name, shared, params, occurrence)),
       insertBeforeLine: first.host.insertBeforeLine,
       occurrences: group.map((info) => ({ startLine: info.start, endLine: info.end })),
-      ...generated(context, group, name, props, [], false, variants),
+      mapping: null,
+      ...generated(context, group, name, props, [], false, shape),
     }
-    context.origins.set(draft, { infos: group, variants })
+    context.origins.set(draft, { infos: group, shape, params })
     suggestions.push(draft)
   }
   return suggestions
@@ -585,14 +644,12 @@ function generated(
   props: readonly SuggestedProp[],
   typeImports: readonly TypeImport[],
   typesDerived: boolean,
-  variants: number,
+  shape: Shape,
 ) {
   const [first] = infos as [NodeInfo, ...NodeInfo[]]
-  const body = sectionBody(context, first)
+  const body = shape.body ?? sectionBody(context, first)
   const propsType = props.length === 0 ? null : propsTypeName(context, name)
-  const propsDeclaration = propsType === null
-    ? null
-    : [`interface ${propsType} {`, ...props.map((prop) => `  ${prop.name}: ${prop.type}`), '}'].join('\n')
+  const propsDeclaration = propsType === null ? null : interfaceText(propsType, props)
   return {
     body: body.join('\n'),
     propsType,
@@ -600,7 +657,286 @@ function generated(
     typeImports: [...typeImports],
     typesDerived,
     snippet: componentSnippet(name, props, propsType, propsDeclaration, body),
-    ...applicability(context, infos, props, variants),
+    ...applicability(context, infos, props, shape),
+  }
+}
+
+function interfaceText(propsType: string, props: readonly SuggestedProp[]): string {
+  return [`interface ${propsType} {`, ...props.map((prop) => `  ${prop.name}: ${prop.type}`), '}'].join('\n')
+}
+
+/** `Name(key={…} a={a} b='…')` for one occurrence; differing values come from that copy. */
+function callFor(
+  context: Context,
+  info: NodeInfo,
+  name: string,
+  shared: readonly SuggestedProp[],
+  params: readonly Param[],
+  occurrence: number,
+): string {
+  const key = keyAttribute(context, info)
+  const attrs = [
+    ...(key === null ? [] : [`key={${key}}`]),
+    ...shared.map((prop) => `${prop.name}={${prop.name}}`),
+    ...params.map((param) => `${param.name}=${attributeValue(param.values[occurrence]!)}`),
+  ]
+  return attrs.length === 0 ? name : `${name}(${attrs.join(' ')})`
+}
+
+/**
+ * Compare the copies slot by slot (see `./slots.ts`). Their skeletons must
+ * match; each differing slot becomes a parameter, referenced in the returned
+ * body through `reference(name)`.
+ */
+function parameterize(
+  context: Context,
+  infos: readonly NodeInfo[],
+  reference: (name: string) => string,
+  reserved: ReadonlySet<string>,
+): { body: string; params: Param[] } | { blocked: string } {
+  const bodies = infos.map((info) => sectionBody(context, info).join('\n'))
+  const scans = bodies.map(scanSlots)
+  if (scans.some((scan) => scan === null)) return { blocked: 'The copies use markup that cannot be rewritten automatically.' }
+  const [first, ...rest] = scans as [NonNullable<(typeof scans)[number]>, ...NonNullable<(typeof scans)[number]>[]]
+  if (rest.some((scan) => scan.skeleton !== first.skeleton)) {
+    return { blocked: 'The copies differ in tags, selectors, or loop headers, not only in values.' }
+  }
+
+  const inner = new Set(infos.flatMap(innerBindings))
+  const taken = new Set(reserved)
+  const params: Param[] = []
+  const references = new Map<Slot, string>()
+  for (const [index, slot] of first.slots.entries()) {
+    const values = scans.map((scan) => scan!.slots[index]!.value)
+    if (values.every((value) => value.code === values[0]!.code)) continue
+    const local = values.flatMap((value) => (value.type === 'expr' ? [...identifiersIn(value.code)] : [])).find((use) => inner.has(use))
+    if (local !== undefined) return { blocked: `A differing value uses ${local}, which only exists inside the block.` }
+    // The same values in several places are one parameter.
+    const same = params.find((param) => param.kind === slot.kind && param.values.every((value, i) => value.code === values[i]!.code))
+    if (same !== undefined) {
+      references.set(slot, reference(same.name))
+      continue
+    }
+    const base = paramBaseName(slot)
+    // On a clash, name by element (`codeClassName`) before falling back to numbers.
+    const qualified = slot.element === null ? base : `${slot.element.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase())}${base[0]!.toUpperCase()}${base.slice(1)}`
+    const name = uniqueIdentifier(taken.has(base) && !taken.has(qualified) ? qualified : base, taken)
+    taken.add(name)
+    params.push({ name, kind: slot.kind, values })
+    references.set(slot, reference(name))
+  }
+  return { body: replaceSlots(bodies[0]!, first.slots, references), params }
+}
+
+/** Names bound inside a section (loop items, scope setup, catch bindings). */
+function innerBindings(info: NodeInfo): string[] {
+  return flatten(info).flatMap(({ node }) => {
+    if (node.kind === 'each') return [...patternNames(node.itemName), ...(node.indexName === null ? [] : [node.indexName])]
+    if (node.kind === 'scope') return node.setup.flatMap((setup) => topLevelDeclarations(setup.code).flatMap((d) => d.names))
+    if (node.kind === 'try' && node.catchBranch?.bindings) return [...identifiersIn(node.catchBranch.bindings.replace(/^\(|\)$/g, ''))]
+    return []
+  })
+}
+
+/** Component-scope names a rewritten body still reads (expressions, conditions, loop headers, spreads). */
+function bodyUses(body: string): Set<string> {
+  const uses = new Set<string>()
+  const scan = scanSlots(body)
+  for (const slot of scan?.slots ?? []) if (slot.value.type === 'expr') identifiersIn(slot.value.code).forEach((use) => uses.add(use))
+  for (const line of body.split('\n')) {
+    const each = /^\s*each\s+.+?\s+in\s+(.+)$/.exec(line)
+    if (each !== null) identifiersIn(each[1]!.replace(/\bkey\b/, ',')).forEach((use) => uses.add(use))
+    for (const spread of line.matchAll(/\{\s*\.\.\.([^}]+)\}/g)) identifiersIn(spread[1]!).forEach((use) => uses.add(use))
+  }
+  return uses
+}
+
+function heuristicParamType(param: Param): string {
+  return param.values.every((value) => value.type === 'string') ? 'string' : 'any'
+}
+
+function paramBaseName(slot: Slot): string {
+  if (slot.attr !== null) {
+    const attr = slot.attr === 'class' ? 'className' : slot.attr
+    return attr.replace(/[-:.]+([A-Za-z0-9])/g, (_match, char: string) => char.toUpperCase())
+  }
+  const member = /^[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/.test(slot.value.code) ? /([A-Za-z_$][\w$]*)$/.exec(slot.value.code)?.[1] : undefined
+  if (member !== undefined) return member
+  return slot.kind === 'test' ? 'condition' : 'text'
+}
+
+const RESERVED_WORDS = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'default', 'delete', 'do', 'else', 'export', 'extends',
+  'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'key', 'let', 'new', 'null', 'return',
+  'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'children', 'ref',
+])
+
+function reservedNames(context: Context, info: NodeInfo): Set<string> {
+  return new Set([...info.available.keys(), ...context.moduleNames, ...context.moduleTypeNames, ...RESERVED_WORDS])
+}
+
+function uniqueIdentifier(base: string, taken: ReadonlySet<string>): string {
+  let name = RESERVED_WORDS.has(base) ? `${base}Value` : base
+  const root = name
+  for (let n = 2; taken.has(name); n++) name = `${root}${n}`
+  return name
+}
+
+/**
+ * Runs of adjacent sibling elements with the same markup render better from
+ * an array. The differing values become item fields; constant arrays become
+ * a module-level `const`, others sit in the `each` header.
+ */
+function suggestMaps(context: Context, hosts: readonly Host[]): Draft[] {
+  const drafts: Draft[] = []
+  const siblingGroups = hosts.flatMap((host) => [host.roots, ...host.roots.flatMap(flatten).flatMap((info) => info.groups)])
+  for (const siblings of siblingGroups) {
+    let start = 0
+    while (start < siblings.length) {
+      let end = start + 1
+      const head = siblings[start]!
+      while (
+        end < siblings.length &&
+        head.node.kind === 'element' &&
+        siblings[end]!.shape === head.shape &&
+        // Only blank lines may separate them; comments would be lost.
+        context.lines.slice(siblings[end - 1]!.end, siblings[end]!.start - 1).every((line) => line.trim() === '')
+      ) end++
+      const run = siblings.slice(start, end)
+      start = end
+      if (run.length < 2 || (run.length < 3 && head.nodeCount < 3)) continue
+      const draft = mapDraft(context, run)
+      if (draft !== null) drafts.push(draft)
+    }
+  }
+  return drafts
+}
+
+function mapDraft(context: Context, run: readonly NodeInfo[]): Draft | null {
+  const first = run[0]!
+  const last = run.at(-1)!
+  const taken = new Set([...reservedNames(context, first), ...context.words])
+  const itemName = [itemBaseName(first), 'item', 'entry'].find((candidate) => !taken.has(candidate)) ?? uniqueIdentifier('item', taken)
+  const result = parameterize(context, run, (param) => `${itemName}.${param}`, new Set(RESERVED_WORDS))
+  if ('blocked' in result || result.params.length === 0) return null
+
+  const arrayName = uniqueIdentifier(arrayBaseName(first), taken)
+  const constant = result.params.every((param) =>
+    param.values.every((value) => value.type === 'string' || ![...identifiersIn(value.code)].some((use) => first.available.has(use))),
+  )
+  const keyField = result.params.find((param) =>
+    param.values.every((value) => value.type === 'string') && new Set(param.values.map((value) => value.code)).size === run.length,
+  )
+  const mapping: Mapping = {
+    arrayName,
+    itemName,
+    items: run.map((_info, occurrence) => `{ ${result.params.map((param) => `${param.name}: ${param.values[occurrence]!.code}`).join(', ')} }`),
+    key: keyField === undefined ? 'index' : `${itemName}.${keyField.name}`,
+    index: keyField === undefined,
+    placement: constant ? 'module' : 'inline',
+    indent: ' '.repeat(first.node.span.start.column - 1),
+  }
+  const rendered = renderMapping(mapping, result.body)
+  const lines = last.end - first.start + 1
+  return {
+    kind: 'map',
+    severity: 'info',
+    host: first.host.name,
+    name: mapping.placement === 'module' ? arrayName : itemName,
+    label: labelOf(first.node),
+    reason:
+      `${run.length} sibling ${labelOf(first.node)} elements repeat the same markup with different ` +
+      `${result.params.map((param) => param.name).join(', ')}. Render them from ` +
+      (mapping.placement === 'module' ? `the ${arrayName} array` : 'an array') + ' with each.',
+    startLine: first.start,
+    endLine: last.end,
+    lines,
+    depth: first.depth,
+    reach: first.depth + first.height,
+    props: [],
+    usage: rendered.usage,
+    usages: [rendered.usage],
+    insertBeforeLine: first.host.insertBeforeLine,
+    occurrences: [{ startLine: first.start, endLine: last.end }],
+    references: [],
+    body: result.body,
+    propsType: null,
+    propsDeclaration: null,
+    typeImports: [],
+    typesDerived: false,
+    snippet: rendered.snippet,
+    mapping,
+    autoApply: { target: 'inline', blocked: null, fileBlocked: 'Mapping rewrites the markup in place.' },
+  }
+}
+
+/** The loop variable: named after the element (`row` for `.row`, `link` for `a`), else `item`. */
+function itemBaseName(info: NodeInfo): string {
+  const node = info.node as ElementNode
+  const semantic = node.classes.find((name) => /^[a-z][a-z0-9-]*$/.test(name))
+  if (semantic !== undefined) return semantic.replace(/-([a-z0-9])/g, (_m, c: string) => c.toUpperCase())
+  const singular: Record<string, string> = { a: 'link', button: 'button', tr: 'row', option: 'option' }
+  return singular[node.tag.split('.').at(-1)!] ?? 'item'
+}
+
+function arrayBaseName(info: NodeInfo): string {
+  const node = info.node as ElementNode
+  const semantic = node.classes.find((name) => /^[a-z][a-z0-9-]*$/.test(name))
+  if (semantic !== undefined) return `${semantic.replace(/-([a-z0-9])/g, (_m, c: string) => c.toUpperCase())}s`
+  const tag = node.tag.split('.').at(-1)!
+  const plural: Record<string, string> = { li: 'items', a: 'links', button: 'buttons', tr: 'rows', option: 'options' }
+  return plural[tag] ?? `${tag[0]!.toLowerCase()}${tag.slice(1)}Items`
+}
+
+/** The `each` block (and module constant) that renders a mapping. */
+export function renderMapping(mapping: Mapping, body: string): { usage: string; declaration: string | null; snippet: string } {
+  const { indent } = mapping
+  const header = `${indent}each ${mapping.itemName}${mapping.index ? ', index' : ''} in `
+  const content = body.split('\n').map((line) => (line === '' ? '' : `${indent}  ${line}`))
+  let block: string[]
+  let declaration: string | null = null
+  if (mapping.placement === 'module') {
+    block = [`${header}${mapping.arrayName} key ${mapping.key}`, ...content]
+    declaration = [`const ${mapping.arrayName} = [`, ...mapping.items.map((item) => `  ${item},`), ']'].join('\n')
+  } else {
+    block = [`${header}[`, ...mapping.items.map((item) => `${indent}  ~ ${item},`), `${indent}  ~ ] key ${mapping.key}`, ...content]
+  }
+  const usage = block.join('\n')
+  const snippet = declaration === null ? usage : ['module', ...declaration.split('\n').map((line) => `  ${line}`), '', usage].join('\n')
+  return { usage, declaration, snippet }
+}
+
+/**
+ * Apply a developer-chosen name: the component and its props interface, or
+ * for a mapping the array (module placement) or the loop item (inline).
+ */
+export function renameSuggestion<T extends Draft>(suggestion: T, name: string): T {
+  if (name === suggestion.name) return suggestion
+  if (suggestion.mapping !== null) {
+    const mapping = { ...suggestion.mapping }
+    let body = suggestion.body
+    if (mapping.placement === 'module') {
+      mapping.arrayName = name
+    } else {
+      const pattern = new RegExp(`\\b${mapping.itemName.replace(/\$/g, '\\$')}\\.`, 'g')
+      body = body.replace(pattern, `${name}.`)
+      mapping.key = mapping.key.replace(pattern, `${name}.`)
+      mapping.itemName = name
+    }
+    const rendered = renderMapping(mapping, body)
+    return { ...suggestion, name, mapping, body, usage: rendered.usage, usages: [rendered.usage], snippet: rendered.snippet }
+  }
+  const propsType = suggestion.propsType === null ? null : `${name}Props`
+  const propsDeclaration = propsType === null ? null : interfaceText(propsType, suggestion.props)
+  const rename = (call: string) => (call.trimStart().startsWith(suggestion.name) ? call.replace(suggestion.name, name) : call)
+  return {
+    ...suggestion,
+    name,
+    propsType,
+    propsDeclaration,
+    usage: rename(suggestion.usage),
+    usages: suggestion.usages.map(rename),
+    snippet: componentSnippet(name, suggestion.props, propsType, propsDeclaration, suggestion.body.split('\n')),
   }
 }
 
@@ -621,30 +957,47 @@ function deriveTypes(context: Context, document: BeastDocument, drafts: readonly
     if (!context.moduleNames.has(local)) code.push(`declare const ${local}: any`)
   }
   code.push(`declare function ${PROBE_CALL}(...values: unknown[]): void`)
-  for (const draft of probed) {
-    const [info] = context.origins.get(draft)!.infos as [NodeInfo]
+  // Shared props are read in the first copy; a differing value is read in
+  // each copy, where its own bindings are in scope.
+  const probes: Array<{ id: string; names: string[] }> = []
+  const probeAt = (id: string, info: NodeInfo, names: readonly string[], expressions: readonly string[]) => {
     const scopes: ProbeScope[] = []
     for (let node: NodeInfo | null = info; node !== null; node = node.parent) if (node.scope !== null) scopes.unshift(node.scope)
     code.push(
-      `function ${ids.get(draft)}(${info.host.propsParameter ?? ''}) {`,
+      `function ${id}(${info.host.propsParameter ?? ''}) {`,
       ...info.host.setupCode,
       ...scopes.map((scope) => scope.open),
-      `${PROBE_CALL}(${draft.props.map((prop) => prop.name).join(', ')})`,
+      `${PROBE_CALL}(${expressions.join(', ')})`,
       ...scopes.map((scope) => scope.close).reverse(),
       '}',
     )
+    probes.push({ id, names: [...names] })
+  }
+  for (const draft of probed) {
+    const origin = context.origins.get(draft)!
+    const id = ids.get(draft)!
+    const shared = draft.props.filter((prop) => !origin.params.some((param) => param.name === prop.name)).map((prop) => prop.name)
+    probeAt(id, origin.infos[0]!, shared, shared)
+    origin.infos.forEach((info, occurrence) => {
+      const params = origin.params.filter((param) => heuristicParamType(param) !== 'string')
+      if (params.length > 0) probeAt(`${id}_${occurrence}`, info, params.map((param) => param.name), params.map((param) => `(${param.values[occurrence]!.code})`))
+    })
   }
 
-  const result = options.resolveTypes({
-    sourcePath: options.sourcePath,
-    code: code.join('\n'),
-    probes: probed.map((draft) => ({ id: ids.get(draft)!, names: draft.props.map((prop) => prop.name) })),
-  })
+  const result = options.resolveTypes({ sourcePath: options.sourcePath, code: code.join('\n'), probes })
   if (result === null) return [...drafts]
 
   return drafts.map((draft) => {
+    const origin = context.origins.get(draft)
     const types = result.get(ids.get(draft) ?? '')
-    if (types === undefined) return draft
+    if (types === undefined || origin === undefined) return draft
+    // A parameter's type is the union of its values' types across copies.
+    for (const param of origin.params) {
+      const parts = origin.infos.map((_info, occurrence) => result.get(`${ids.get(draft)}_${occurrence}`)?.get(param.name))
+      if (parts.some((part) => part === undefined)) continue
+      const union = [...new Set(parts.flatMap((part) => splitUnion(part!.type)))]
+      types.set(param.name, { type: union.join(' | '), imports: parts.flatMap((part) => part!.imports) })
+    }
     const imports: TypeImport[] = []
     const props = draft.props.map((prop) => {
       const resolved = types.get(prop.name)
@@ -656,9 +1009,26 @@ function deriveTypes(context: Context, document: BeastDocument, drafts: readonly
       }
       return { name: prop.name, type: resolved.type }
     })
-    const origin = context.origins.get(draft)!
-    return { ...draft, props, ...generated(context, origin.infos, draft.name, props, imports, true, origin.variants) }
+    return { ...draft, props, ...generated(context, origin.infos, draft.name, props, imports, true, origin.shape) }
   })
+}
+
+/** Top-level members of a printed union type. */
+function splitUnion(type: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < type.length; i++) {
+    const char = type[i]!
+    if ('([{<'.includes(char)) depth++
+    else if (')]}>'.includes(char) && type[i - 1] !== '=') depth--
+    else if (char === '|' && depth === 0) {
+      parts.push(type.slice(start, i).trim())
+      start = i + 1
+    }
+  }
+  parts.push(type.slice(start).trim())
+  return parts
 }
 
 function propsTypeName(context: Context, name: string): string {
@@ -677,19 +1047,28 @@ function applicability(
   context: Context,
   infos: readonly NodeInfo[],
   props: readonly SuggestedProp[],
-  variants: number,
+  shape: Shape,
 ): { references: string[]; autoApply: AutoApply } {
   const [first] = infos as [NodeInfo, ...NodeInfo[]]
   const references = new Set<string>()
-  for (const info of infos) info.uses.forEach((name) => references.add(name))
+  if (shape.uses !== undefined) {
+    // A parameterized body reads only what is left after its values moved to the call sites.
+    shape.uses.forEach((name) => references.add(name))
+    for (const line of shape.body ?? []) {
+      const tag = /^\s*([A-Z][\w$]*)/.exec(line)
+      if (tag !== null) references.add(tag[1]!)
+    }
+  } else {
+    for (const info of infos) info.uses.forEach((name) => references.add(name))
+  }
   for (const prop of props) identifiersIn(prop.type).forEach((name) => references.add(name))
   const lines = first.end - first.start + 1
 
   let blocked: string | null = null
   if (first.host.hasStyle) {
     blocked = `${first.host.name} has a scoped style block, which would stop matching the moved elements.`
-  } else if (variants > 0) {
-    blocked = `The copies differ in ${variants} value${variants === 1 ? '' : 's'}, so replacing them with one call would change behavior.`
+  } else if (shape.blocked !== null) {
+    blocked = shape.blocked
   } else if (infos.some((info) => info.host !== first.host)) {
     blocked = 'The copies live in different components, which may not share the bindings the props need.'
   }

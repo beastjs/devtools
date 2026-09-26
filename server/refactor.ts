@@ -1,6 +1,7 @@
 import { basename, dirname, join } from 'node:path'
 import type { BeastDocument, ModuleDeclaration } from 'beast-tsrx'
 import type { LineRange, RefactorSuggestion, RefactorTarget, TypeImport } from '../shared/types.js'
+import { renderMapping } from './analyze.js'
 import { parseImport, renderImport, topLevelDeclarations, type Declaration, type ImportSpecifier } from './source-scan.js'
 
 /** A refusal with an HTTP status: 409 for stale input, 422 for refactors that cannot be done safely. */
@@ -33,6 +34,8 @@ export interface PlanInput {
   suggestion: RefactorSuggestion
   target: RefactorTarget
   exists: (absolutePath: string) => boolean
+  /** The developer chose the name: never suffix it, refuse instead. */
+  nameChosen?: boolean
 }
 
 interface LineEdit {
@@ -53,7 +56,26 @@ export function planRefactor(input: PlanInput): RefactorPlan {
   if (target === 'file' && suggestion.autoApply.fileBlocked !== null) {
     throw new RefactorError(suggestion.autoApply.fileBlocked, 422)
   }
+  if (suggestion.mapping !== null) return planMapping(input)
   return target === 'inline' ? planInline(input) : planFile(input)
+}
+
+function planMapping({ absolutePath, source, suggestion }: PlanInput): RefactorPlan {
+  const lines = source.split('\n')
+  const mapping = suggestion.mapping!
+  const range = suggestion.occurrences[0]!
+  const declaration = renderMapping(mapping, suggestion.body).declaration
+  const edits: LineEdit[] = [
+    { start: range.startLine, deleteCount: range.endLine - range.startLine + 1, insert: suggestion.usage.split('\n') },
+    ...(declaration === null
+      ? []
+      : [{ start: suggestion.insertBeforeLine, deleteCount: 0, insert: ['module', ...declaration.split('\n').map((line) => `  ${line}`), ''] }]),
+  ]
+  return {
+    component: suggestion.name,
+    summary: `Mapped ${mapping.items.length} ${suggestion.label} elements from ${mapping.placement === 'module' ? mapping.arrayName : 'an array'}`,
+    changes: [{ absolutePath, before: source, after: applyEdits(lines, edits).join('\n') }],
+  }
 }
 
 function planInline({ absolutePath, source, document, suggestion }: PlanInput): RefactorPlan {
@@ -77,9 +99,12 @@ function planInline({ absolutePath, source, document, suggestion }: PlanInput): 
   }
 }
 
-function planFile({ absolutePath, source, document, suggestion, exists }: PlanInput): RefactorPlan {
+function planFile({ absolutePath, source, document, suggestion, exists, nameChosen }: PlanInput): RefactorPlan {
   const lines = source.split('\n')
   const dir = dirname(absolutePath)
+  if (nameChosen && exists(join(dir, `${suggestion.name}.btsx`))) {
+    throw new RefactorError(`${suggestion.name}.btsx already exists. Choose another name.`, 409)
+  }
   const name = availableName(suggestion.name, source, (candidate) => exists(join(dir, `${candidate}.btsx`)))
   const newPath = join(dir, `${name}.btsx`)
   const references = new Set(suggestion.references)
@@ -175,10 +200,11 @@ function renderTypeImports(entries: readonly TypeImport[], quote: string): strin
 }
 
 /** Replace every occurrence with a call, keeping each occurrence's indentation. */
+/** Replace each occurrence with its own call (copies that differ pass different values). */
 function replaceOccurrences(lines: readonly string[], suggestion: RefactorSuggestion, name: string): LineEdit[] {
-  const call = suggestion.usage.trimStart().replace(suggestion.name, name)
-  return suggestion.occurrences.map((range: LineRange) => {
+  return suggestion.occurrences.map((range: LineRange, index) => {
     const indent = /^ */.exec(lines[range.startLine - 1] ?? '')![0]
+    const call = (suggestion.usages[index] ?? suggestion.usages[0]!).replace(suggestion.name, name)
     return { start: range.startLine, deleteCount: range.endLine - range.startLine + 1, insert: [indent + call] }
   })
 }

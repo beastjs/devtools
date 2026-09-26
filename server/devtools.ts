@@ -119,6 +119,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           path: String(body.path ?? ''),
           hash: String(body.hash ?? ''),
           suggestionId: String(body.suggestionId ?? ''),
+          ...(typeof body.name === 'string' && body.name.trim() !== '' ? { name: body.name.trim().slice(0, 80) } : {}),
           target: body.target === 'file' ? 'file' : 'inline',
           dryRun: body.dryRun !== false,
           settings: readSettings((name) => (body.settings as Record<string, unknown> | undefined)?.[name], defaults),

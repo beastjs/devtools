@@ -59,8 +59,34 @@ describe('hoisting into the same file', () => {
     expectCompiles('/project/src/Cards.btsx', after)
   })
 
-  test('refuses copies that differ, since one call would change behavior', () => {
-    expect(() => plan(APP, 'App', (s) => s.kind === 'duplicate', 'inline')).toThrow(RefactorError)
+  test('turns values that differ between copies into props, one call per copy', () => {
+    const result = plan(APP, 'App', (s) => s.kind === 'duplicate', 'inline')
+    const after = result.changes[0]!.after
+    expect(after).toContain("onClick={() => copyNote('left', active.left.note)}")
+    expect(after).toContain("onClick={() => copyNote('right', active.right.note)}")
+    expect(after).toContain('      code(className={codeClassName}) #{note}')
+    expect(after.match(/^ {8}CopyNote\(/gm)).toHaveLength(2)
+    expectCompiles('/project/src/App.btsx', after)
+  })
+
+  test('refuses copies whose markup differs beyond values', () => {
+    const source = [
+      'section',
+      '  .left',
+      '    article.card',
+      '      h2 One',
+      '      p Body',
+      '      footer Fine',
+      '  .right',
+      '    article.panel',
+      '      h2 Two',
+      '      p Body',
+      '      footer Fine',
+      '',
+    ].join('\n')
+    const { suggestions } = suggestionsFor(source, 'Cards', { minLines: 4 })
+    const copies = suggestions.find((s) => s.kind === 'duplicate')
+    expect(copies?.autoApply.blocked).toContain('tags, selectors')
   })
 
   test('refuses components with scoped styles', () => {
@@ -210,6 +236,17 @@ describe('applying through the project', () => {
     beast.undo(applied.undoId!)
     expect(readFileSync(join(root!, 'src/App.btsx'), 'utf8')).toBe(APP)
     expect(existsSync(join(root!, 'src/AppHeader.btsx'))).toBe(false)
+  })
+
+  test('validates a chosen name before planning', () => {
+    const beast = project()
+    const report = beast.file('src/App.btsx', SETTINGS)!
+    const suggestion = report.analysis!.suggestions.find((s) => s.name === 'RightArticle')!
+    const request = { path: 'src/App.btsx', hash: report.hash, settings: SETTINGS, suggestionId: suggestion.id, target: 'inline' as const, dryRun: true }
+    expect(() => beast.apply({ ...request, name: 'right article' })).toThrow(/PascalCase/)
+    expect(() => beast.apply({ ...request, name: 'Panel' })).toThrow(/already used/)
+    const renamed = beast.apply({ ...request, name: 'OutputCard' })
+    expect(renamed.component).toBe('OutputCard')
   })
 
   test('refuses to undo over later edits', () => {

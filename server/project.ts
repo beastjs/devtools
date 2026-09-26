@@ -21,9 +21,10 @@ import type {
   FileSummary,
   HookBinding,
   ProjectReport,
+  RefactorSuggestion,
   UndoResult,
 } from '../shared/types.js'
-import { analyzeDocument, type AnalyzeOptions } from './analyze.js'
+import { analyzeDocument, renameSuggestion, type AnalyzeOptions } from './analyze.js'
 import { diffLines } from './diff.js'
 import { buildLineMap } from './line-map.js'
 import { planRefactor, RefactorError, type FileChange } from './refactor.js'
@@ -169,8 +170,11 @@ export class BeastProject {
       request.settings,
       this.#typed(absolutePath),
     )
-    const suggestion = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
-    if (suggestion === undefined) throw new RefactorError('That suggestion no longer applies.', 409)
+    const found = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
+    if (found === undefined) throw new RefactorError('That suggestion no longer applies.', 409)
+    const name = request.name?.trim() || found.name
+    if (name !== found.name) validateName(name, found, entry.source)
+    const suggestion = renameSuggestion(found, name)
 
     const plan = planRefactor({
       absolutePath,
@@ -179,6 +183,7 @@ export class BeastProject {
       suggestion,
       target: request.target,
       exists: existsSync,
+      nameChosen: name !== found.name,
     })
     for (const change of plan.changes) this.#validate(change)
 
@@ -327,6 +332,29 @@ export class BeastProject {
 
   #relative(absolutePath: string): string {
     return relative(this.#options.root, absolutePath).split(sep).join('/')
+  }
+}
+
+const RESERVED = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'default', 'delete', 'do', 'else', 'enum', 'export',
+  'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return',
+  'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static',
+])
+
+/** A chosen name must be a fresh identifier: PascalCase for components, camelCase for mappings. */
+function validateName(name: string, suggestion: RefactorSuggestion, source: string): void {
+  const component = suggestion.mapping === null
+  const shape = component ? /^[A-Z][A-Za-z0-9_$]*$/ : /^[a-z_$][A-Za-z0-9_$]*$/
+  if (!shape.test(name) || RESERVED.has(name)) {
+    throw new RefactorError(
+      component ? `"${name}" is not a valid component name. Use PascalCase, like UserCard.` : `"${name}" is not a valid variable name.`,
+      422,
+    )
+  }
+  const used = (word: string) => new RegExp(`(^|[^\\w$])${word.replace(/\$/g, '\\$')}($|[^\\w$])`).test(source)
+  if (used(name)) throw new RefactorError(`${name} is already used in this file. Choose another name.`, 422)
+  if (component && suggestion.propsType !== null && used(`${name}Props`)) {
+    throw new RefactorError(`${name}Props is already used in this file. Choose another name.`, 422)
   }
 }
 

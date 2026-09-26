@@ -129,13 +129,27 @@ Both panes update when you save.
 ### Refactor
 
 The structural nesting depth of every template line, with totals and a
-per-depth chart, plus two kinds of suggestions:
+per-depth chart, plus three kinds of suggestions:
 
 - **Extract**: a section nested deeper than the depth limit becomes a component.
   Its props and their types are inferred from the bindings the section uses,
   and a loop's `key` stays at the call site.
-- **Shared shape**: structurally identical blocks that one component could
-  replace.
+- **Shared shape**: blocks with the same markup that one component can replace.
+  Attribute values, element text, and `if`/`switch` conditions that differ
+  between the copies become props, so each copy is replaced by a call that
+  passes its own values:
+  `CopyNote(onClick={() => copyNote('left', note)} text='Copy')`.
+- **Repeated**: runs of sibling elements with the same markup (three or more,
+  or two larger ones) are rendered from an array with `each`. The differing
+  values become item fields. The array is a module-level `const` when its
+  values are constants, and sits inline in the `each` header when they read
+  component state. The loop is keyed by a field whose values are unique, or by
+  the index.
+
+Every suggestion's name is editable on its card before you apply it: the
+component (and its `NameProps` interface and file), or for a repeated run the
+array (or loop variable). Names are checked as you type and again on the dev
+server, which refuses names already used in the file.
 
 The toolbar adjusts the depth limit, the smallest section worth extracting,
 and the size at which a section defaults to its own file.
@@ -182,7 +196,9 @@ Automatic refactors are conservative:
 - The write endpoints accept only same-origin JSON requests, and only for
   `.btsx` files in the configured directories.
 - Automatic refactoring is refused when it cannot be done safely:
-  - copies that differ from each other, or that live in different components;
+  - copies that differ in more than values (tags, selectors, loop headers),
+    whose differing values use a variable bound inside the block, or that live
+    in different components;
   - components with scoped `style` blocks;
   - moving a section that uses a file-local `component` into a new file.
 

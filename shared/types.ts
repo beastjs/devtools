@@ -31,7 +31,7 @@ export interface SuggestedProp {
 
 export interface RefactorSuggestion extends LineRange {
   id: string
-  kind: 'extract' | 'duplicate'
+  kind: 'extract' | 'duplicate' | 'map'
   severity: Severity
   /** Component (default or local `component`) the section currently lives in. */
   host: string
@@ -48,8 +48,10 @@ export interface RefactorSuggestion extends LineRange {
   props: SuggestedProp[]
   /** Ready-to-paste `component` declaration. */
   snippet: string
-  /** Call site that replaces the section. */
+  /** Call site that replaces the section (for `map`, the whole `each` block). */
   usage: string
+  /** The call for each occurrence, unindented; copies that differ pass different values. */
+  usages: string[]
   /** Line before which the `component` declaration should be inserted. */
   insertBeforeLine: number
   /** Every structurally identical copy (duplicate suggestions only). */
@@ -66,7 +68,24 @@ export interface RefactorSuggestion extends LineRange {
   typeImports: TypeImport[]
   /** True when TypeScript derived the prop types; false for heuristic fallbacks. */
   typesDerived: boolean
+  /** For `map` suggestions: how the repeated siblings are rendered from an array. */
+  mapping: Mapping | null
   autoApply: AutoApply
+}
+
+export interface Mapping {
+  arrayName: string
+  itemName: string
+  /** One object literal per repeated sibling, in order. */
+  items: string[]
+  /** The `each … key` expression. */
+  key: string
+  /** Whether the loop reads the index (used as the key when no field is unique). */
+  index: boolean
+  /** `module`: a module-level constant; `inline`: the array sits in the `each` header. */
+  placement: 'module' | 'inline'
+  /** Indentation of the replaced siblings. */
+  indent: string
 }
 
 export interface TypeImport {
@@ -186,6 +205,8 @@ export interface ApplyRequest {
   settings: AnalyzerSettings
   suggestionId: string
   target: RefactorTarget
+  /** A new name for the component (or, for `map`, the array); defaults to the suggested one. */
+  name?: string
   /** Plan and validate without writing. */
   dryRun: boolean
 }

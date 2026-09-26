@@ -6,6 +6,17 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ### Added
 
+- **Editable names**: rename a suggested component (with its props interface
+  and file) or a mapping's array before applying. Names are validated in the
+  panel and on the dev server.
+- **Refactoring copies that differ**: blocks with the same markup but different
+  attribute values, text, or conditions can now be merged into one component.
+  Each differing value becomes a typed prop, and every copy becomes a call that
+  passes its own values.
+- **Mapping repeated siblings**: runs of sibling elements with the same markup
+  get a new "repeated" suggestion that renders them from an array with `each`,
+  keyed by a unique field or the index.
+
 - **Rspack and Rsbuild support**: `@beastjs/devtools/rspack` for
   `rspack serve` and `@beastjs/devtools/rsbuild` for `rsbuild dev`, next to the
   Vite plugin at `@beastjs/devtools/vite`. Both leave production builds
