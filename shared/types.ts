@@ -191,6 +191,8 @@ export interface ProjectReport {
   settings: AnalyzerSettings
   files: FileSummary[]
   components: ComponentLocation[]
+  /** Components the app's entry modules import (`App` from `main.ts`); where the block view starts. */
+  entryComponents: string[]
 }
 
 export interface FileReport {

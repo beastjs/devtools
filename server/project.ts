@@ -24,6 +24,7 @@ import type {
   RefactorSuggestion,
   UndoResult,
 } from '../shared/types.js'
+import { entryComponents } from './entry.js'
 import { analyzeDocument, renameSuggestion, type AnalyzeOptions } from './analyze.js'
 import { diffLines } from './diff.js'
 import { buildLineMap } from './line-map.js'
@@ -39,6 +40,8 @@ export interface ProjectOptions {
   include: readonly string[]
   /** Absolute directories never listed (the overlay's own sources). */
   exclude: readonly string[]
+  /** The app's entry modules, as absolute paths; read on every report. */
+  entries?: () => readonly string[]
 }
 
 interface CompiledEntry {
@@ -103,7 +106,8 @@ export class BeastProject {
       })
       components.push(...componentLocations(entry.result.ast, absolutePath, path))
     }
-    return { root: this.#options.root, settings, files, components }
+    const entryNames = entryComponents(this.#options.entries?.() ?? [])
+    return { root: this.#options.root, settings, files, components, entryComponents: entryNames }
   }
 
   file(path: string, settings: AnalyzerSettings): FileReport | null {

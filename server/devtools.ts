@@ -23,6 +23,8 @@ export interface DevtoolsServerOptions extends BeastDevtoolsOptions {
   root: string
   /** The dev server's own open-in-editor URL for a `file:line:column` location. */
   editorUrl: (location: string) => string
+  /** The app's entry modules, as absolute paths, so the overlay can find the app's root component. */
+  entries?: () => readonly string[]
 }
 
 export type Middleware = (req: IncomingMessage, res: ServerResponse, next: (error?: unknown) => void) => void
@@ -54,7 +56,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
   const { root, editorUrl } = options
   const include = options.include ?? ['src']
   const defaults: AnalyzerSettings = { ...DEFAULT_SETTINGS, ...options.analyzer }
-  const project = new BeastProject({ root, include, exclude: [PACKAGE_ROOT] })
+  const project = new BeastProject({ root, include, exclude: [PACKAGE_ROOT], ...(options.entries === undefined ? {} : { entries: options.entries }) })
   const clients = new Set<ServerResponse>()
   const watchers: FSWatcher[] = []
   const pending = new Set<string>()

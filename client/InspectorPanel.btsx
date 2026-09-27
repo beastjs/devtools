@@ -3,6 +3,7 @@ import type { FileReport, FileSummary } from '../shared/types.ts'
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
 import { openInEditor } from './api.ts'
+import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
 import { scrollTarget, type ScrollTarget } from './util.ts'
 
@@ -73,7 +74,8 @@ FileList(files={files} active={file} metrics={false} onSelect={onSelectFile})
   else
     fragment
       .bdt-toolbar
-        span.bdt-toolbar-title.bdt-mono #{current.path}
+        span.bdt-toolbar-title.bdt-mono
+          PathLabel(path={current.path})
         if compiled?.ok
           span.bdt-badge.is-ok compiled
         else

@@ -172,7 +172,19 @@ own controls keep working.
 ### Components
 
 The live Octane component tree, including the `each` and `if` scopes that
-Beast templates create. Selecting a component shows:
+Beast templates create, in one of two views:
+
+- **Blocks** (the default) stacks each component as a one-line card. Shades
+  alternate by layer and a colored stripe marks each depth. Indentation stops
+  growing after six levels, and deeper blocks show their depth instead, so
+  large apps stay readable. The view starts at your app's entry component
+  (the `.btsx` component that `main.ts` imports), and folds the providers
+  above it into a single **wrappers hidden** bar you can expand. Anything else
+  those providers render, such as a toaster, stays visible.
+- **Tree** is the classic indented tree.
+
+Click a caret, or double-click a block, to collapse or expand it. A collapsed
+block shows how many children it holds. Selecting a component shows:
 
 - its hook values, named after the `setup` bindings that declare them, for
   example `activeId: "language"`;

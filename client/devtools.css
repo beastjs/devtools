@@ -693,6 +693,16 @@ html.bdt-resizing * {
   text-align: left;
 }
 
+/* File paths: the directory recedes so the file's own name stands out. */
+.bdt-path-dir {
+  color: var(--bdt-dim);
+  font-weight: 400;
+}
+
+.bdt-path-name {
+  color: var(--bdt-text);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Components panel                                                           */
 
@@ -743,6 +753,187 @@ html.bdt-resizing * {
 .bdt-tree-name.is-flow {
   color: var(--bdt-dim);
   font-style: italic;
+}
+
+/* Tree style toggle in the Components toolbar. */
+.bdt-segment {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 0.33px solid var(--bdt-line-2);
+  border-radius: 7px;
+  background: var(--bdt-bg);
+}
+
+.bdt-segment-item {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 5px;
+  color: var(--bdt-muted);
+  font-size: 11px;
+  font-weight: 500;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.bdt-segment-item:hover {
+  color: var(--bdt-text);
+}
+
+.bdt-segment-item.is-active {
+  background: var(--bdt-bg-4);
+  color: var(--bdt-text);
+}
+
+/*
+ * Block view: one single-line card per component, stacked like Jenga bricks.
+ * Alternate layers take alternate shades, a colored stripe marks each depth,
+ * and indentation stops growing after a few levels.
+ */
+.bdt-blocks {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px 14px;
+  font-family: var(--bdt-mono);
+  font-size: 11.5px;
+}
+
+.bdt-block {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px 0 4px;
+  border: 0.33px solid var(--bdt-line);
+  border-left: 3px solid var(--bdt-line-2);
+  border-radius: 6px;
+  background: var(--bdt-bg-2);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  text-align: left;
+  white-space: nowrap;
+  animation: bdt-block-in 220ms var(--bdt-ease-out);
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 180ms var(--bdt-ease-out);
+}
+
+.bdt-block.is-odd {
+  background: var(--bdt-bg-3);
+}
+
+.bdt-block:hover {
+  background: var(--bdt-bg-4);
+  transform: translateX(2px);
+}
+
+.bdt-block.is-selected {
+  background: var(--bdt-bg-4);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 184, 107, 0.55),
+    0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Wrappers above the app, when revealed: present, but out of the way. */
+.bdt-block.is-wrapper {
+  border-style: dashed;
+  border-left-style: solid;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.65;
+}
+
+.bdt-block-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--bdt-text);
+  font-weight: 500;
+}
+
+.bdt-block-name.is-flow {
+  color: var(--bdt-dim);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.bdt-block-depth,
+.bdt-block-count {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bdt-bg);
+  color: var(--bdt-dim);
+  font-size: 10px;
+  flex: none;
+}
+
+.bdt-block-count {
+  color: var(--bdt-muted);
+}
+
+@keyframes bdt-block-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+/* The providers above the app, folded into one bar. */
+.bdt-wrappers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 28px;
+  margin-bottom: 3px;
+  padding: 0 10px;
+  border: 1px dashed var(--bdt-line-2);
+  border-radius: 6px;
+  color: var(--bdt-muted);
+  text-align: left;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.bdt-wrappers:hover {
+  background: var(--bdt-bg-2);
+  border-color: var(--bdt-dim);
+}
+
+.bdt-wrappers-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bdt-accent-soft);
+  color: var(--bdt-accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.bdt-wrappers-label {
+  color: var(--bdt-text);
+}
+
+.bdt-wrappers-chain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--bdt-dim);
+}
+
+.bdt-wrappers-action {
+  color: var(--bdt-info);
 }
 
 .bdt-tree-id {
@@ -1524,5 +1715,9 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   .bdt-picker-label {
     transition-duration: 1ms !important;
     transition-delay: 0s !important;
+  }
+
+  .bdt-block {
+    animation: none;
   }
 }

@@ -1,6 +1,7 @@
 import { relative, resolve, sep } from 'node:path'
 import { searchForWorkspaceRoot, type Plugin } from 'vite'
 import { CLIENT_ENTRY, createDevtoolsServer, PACKAGE_ROOT, toPosix, type BeastDevtoolsOptions } from './server/devtools.js'
+import { htmlEntries } from './server/entry.js'
 import { isTaggable, tagSource } from './server/source-tags.js'
 import { API_BASE } from './shared/types.js'
 
@@ -39,6 +40,7 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): Plugin {
         ...options,
         root,
         editorUrl: (location) => `/__open-in-editor?file=${encodeURIComponent(location)}`,
+        entries: () => htmlEntries(root),
       })
       server.middlewares.use(API_BASE, devtools.middleware)
       // Vite already watches the project, so reuse its watcher instead of `devtools.watch()`.

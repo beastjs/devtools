@@ -1,24 +1,22 @@
 import { useMemo, useState, useSyncExternalStore } from 'octane'
 import type { ComponentLocation } from '../shared/types.ts'
 import { openInEditor } from './api.ts'
-import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell, type RuntimeNode } from './runtime.ts'
+import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell } from './runtime.ts'
 import Splitter from './Splitter.btsx'
+import { findWrappers, treeRows, type ComponentsView } from './tree.ts'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
 
 module
   interface ComponentsPanelProps {
     components: readonly ComponentLocation[]
+    /** Components the app's entry module imports; the block view starts at the first one it finds. */
+    entryComponents: readonly string[]
+    view: ComponentsView
+    onViewChange: (view: ComponentsView) => void
     showControlFlow: boolean
     onShowControlFlowChange: (value: boolean) => void
     onViewSource: (path: string, line: number) => void
     onAnalyze: (path: string) => void
-  }
-
-  interface TreeRow {
-    node: RuntimeNode
-    depth: number
-    expandable: boolean
-    open: boolean
   }
 
   interface ValueRow {
@@ -46,27 +44,17 @@ module
     useCallback: 'memo-or-callback',
   }
 
-  function childrenOf(node: RuntimeNode, showControlFlow: boolean): RuntimeNode[] {
-    if (showControlFlow) return node.children
-    return node.children.flatMap((child) => (child.controlFlow ? childrenOf(child, false) : [child]))
-  }
+  /** Blocks indent this many levels; deeper ones show their depth instead of drifting right. */
+  const BLOCK_INDENT_LIMIT = 6
+  const BLOCK_INDENT = 10
 
-  function matches(node: RuntimeNode, query: string, showControlFlow: boolean): boolean {
-    return node.label.toLowerCase().includes(query) || childrenOf(node, showControlFlow).some((child) => matches(child, query, showControlFlow))
-  }
+  /** One stripe color per depth, cycling, so a level can be followed down the stack. */
+  const DEPTH_COLORS = ['#ffb86b', '#7cb7ff', '#5fd39a', '#ff7eb6', '#c29bff', '#7fe0d0']
 
-  function treeRows(roots: readonly RuntimeNode[], collapsed: ReadonlySet<number>, showControlFlow: boolean, query: string): TreeRow[] {
-    const rows: TreeRow[] = []
-    const visit = (node: RuntimeNode, depth: number) => {
-      if (query !== '' && !matches(node, query, showControlFlow)) return
-      const children = childrenOf(node, showControlFlow)
-      const open = query !== '' || !collapsed.has(node.id)
-      rows.push({ node, depth, expandable: children.length > 0, open })
-      if (open) children.forEach((child) => visit(child, depth + 1))
-    }
-    roots.forEach((root) => visit(root, 0))
-    return rows
-  }
+  const VIEWS: ReadonlyArray<{ id: ComponentsView; label: string }> = [
+    { id: 'blocks', label: 'Blocks' },
+    { id: 'tree', label: 'Tree' },
+  ]
 
   /**
    * Name runtime hook cells after the setup declarations that created them.
@@ -89,13 +77,21 @@ module
     })
   }
 
-props { components, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze }: ComponentsPanelProps
+props { components, entryComponents, view, onViewChange, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze }: ComponentsPanelProps
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const rows = useMemo(() => treeRows(runtime.roots, collapsed, showControlFlow, query.trim().toLowerCase()), [runtime.roots, collapsed, showControlFlow, query]);
+  const [showWrappers, setShowWrappers] = useState(false);
+  const search = query.trim().toLowerCase();
+  // Blocks start at the app's entry component; a search always covers everything.
+  const wrappers = useMemo(() => findWrappers(runtime.roots, entryComponents, showControlFlow), [runtime.roots, entryComponents, showControlFlow]);
+  const hideWrappers = view === 'blocks' && wrappers !== null && !showWrappers && search === '';
+  const rows = useMemo(
+    () => treeRows(hideWrappers ? wrappers!.tops : runtime.roots, collapsed, showControlFlow, search, new Set(view === 'blocks' ? (wrappers?.chain.map((node) => node.id) ?? []) : [])),
+    [runtime.roots, wrappers, hideWrappers, view, collapsed, showControlFlow, search],
+  );
   const detail = runtime.detail;
   const location = detail === null ? undefined : components.find((component) => component.name === detail.name);
   const hooks = detail === null ? [] : hookRows(detail.hooks, location);
@@ -128,6 +124,15 @@ else
   fragment
     .bdt-pane
       .bdt-toolbar
+        .bdt-segment(role="group" aria-label="Tree style")
+          each option in VIEWS key option.id
+            button(
+              ~ type="button"
+              ~ aria-pressed={view === option.id}
+              ~ className={cx('bdt-segment-item', view === option.id && 'is-active')}
+              ~ onClick={() => onViewChange(option.id)}
+              ~ )
+              | #{option.label}
         input.bdt-input(
           ~ type="search"
           ~ placeholder="Filter components"
@@ -143,6 +148,46 @@ else
       .bdt-scroll
         if rows.length === 0
           p.bdt-empty #{query === '' ? 'No Octane roots are mounted.' : 'Nothing matches that filter.'}
+        elseif view === 'blocks'
+          div.bdt-blocks(role="tree" aria-label="Component blocks")
+            if wrappers !== null && search === ''
+              button(
+                ~ type="button"
+                ~ aria-expanded={showWrappers}
+                ~ className={cx('bdt-wrappers', showWrappers && 'is-open')}
+                ~ title={showWrappers ? 'Fold the wrappers above the app back up' : 'Show the providers the app is wrapped in'}
+                ~ onClick={() => setShowWrappers((value) => !value)}
+                ~ )
+                span.bdt-wrappers-count #{wrappers.chain.length}
+                span.bdt-wrappers-label wrapper#{wrappers.chain.length === 1 ? '' : 's'} #{showWrappers ? 'shown' : 'hidden'}
+                span.bdt-wrappers-chain #{wrappers.chain.map((node) => node.label).join(' › ')}
+                span.bdt-wrappers-action #{showWrappers ? 'hide' : 'show'}
+            each row in rows key row.node.id
+              button(
+                ~ type="button"
+                ~ role="treeitem"
+                ~ aria-level={row.depth + 1}
+                ~ aria-selected={runtime.selectedId === row.node.id}
+                ~ aria-expanded={row.expandable ? row.open : undefined}
+                ~ className={cx('bdt-block', row.depth % 2 === 1 && 'is-odd', runtime.selectedId === row.node.id && 'is-selected', row.wrapper && 'is-wrapper')}
+                ~ style={{ marginLeft: `${Math.min(row.depth, BLOCK_INDENT_LIMIT) * BLOCK_INDENT}px`, borderLeftColor: DEPTH_COLORS[row.depth % DEPTH_COLORS.length] }}
+                ~ onClick={() => selectRuntimeNode(row.node.id)}
+                ~ onDoubleClick={() => row.expandable && toggleNode(row.node.id)}
+                ~ )
+                span(
+                  ~ className={cx('bdt-caret', row.open && 'is-open')}
+                  ~ onClick={(event) => { event.stopPropagation(); if (row.expandable) toggleNode(row.node.id); }}
+                  ~ )
+                  | #{row.expandable ? '▸' : ''}
+                span(className={cx('bdt-block-name', row.node.controlFlow && 'is-flow')}) #{row.node.label}
+                if row.node.kind === 'root' || row.node.kind === 'portal'
+                  span.bdt-badge #{row.node.kind}
+                if row.depth > BLOCK_INDENT_LIMIT
+                  span.bdt-block-depth(title={`Nested ${row.depth} levels deep`}) L#{row.depth}
+                span.bdt-spacer
+                if row.expandable && !row.open
+                  span.bdt-block-count(title={`${row.childCount} hidden child${row.childCount === 1 ? '' : 'ren'}`}) +#{row.childCount}
+                span.bdt-tree-id ##{row.node.id}
         else
           div.bdt-tree(role="tree" aria-label="Component tree")
             each row in rows key row.node.id

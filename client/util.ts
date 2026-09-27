@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, type AnalyzerSettings } from '../shared/types.ts'
+import type { ComponentsView } from './tree.ts'
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
@@ -52,6 +53,7 @@ export interface Preferences {
   height: number
   file: string | null
   showControlFlow: boolean
+  componentsView: ComponentsView
   settings: AnalyzerSettings
 }
 
@@ -63,6 +65,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   height: 360,
   file: null,
   showControlFlow: true,
+  componentsView: 'blocks',
   settings: DEFAULT_SETTINGS,
 }
 
@@ -73,6 +76,7 @@ export function loadPreferences(): Preferences {
       ...DEFAULT_PREFERENCES,
       ...stored,
       settings: { ...DEFAULT_SETTINGS, ...stored.settings },
+      componentsView: stored.componentsView === 'tree' ? 'tree' : 'blocks',
       height: clampHeight(stored.height ?? DEFAULT_PREFERENCES.height),
     }
   } catch {

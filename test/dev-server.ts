@@ -64,6 +64,7 @@ export const OVERLAY_STYLES = /\.bdt-/
 export async function expectDevtools(origin: string, app: TestApp, editorPrefix: string): Promise<void> {
   const project = (await (await fetch(`${origin}${API_BASE}/project`)).json()) as ProjectReport
   expect(project.files.map((file) => file.path)).toEqual(['src/App.btsx'])
+  expect(project.entryComponents).toEqual(['App'])
 
   const file = await fetch(`${origin}${API_BASE}/file?path=src/App.btsx`)
   expect(file.status).toBe(200)

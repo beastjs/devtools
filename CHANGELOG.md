@@ -6,6 +6,11 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ### Added
 
+- **Block view for components**: a new default view of the Components tree
+  that stacks one-line blocks with a depth stripe and capped indentation, and
+  starts at the app's entry component (read from `main.ts`, or your bundler's
+  entry), folding the providers above it into one expandable bar. The classic
+  tree is one click away.
 - **Resizable panes**: drag the edges between the file list, component
   details, BTSX and TSRX, and suggestions and source. Widths are saved per
   browser; double-click an edge to reset it.

@@ -1,6 +1,7 @@
 import type { RsbuildPlugin } from '@rsbuild/core'
 import { CLIENT_ENTRY, createDevtoolsServer, type BeastDevtoolsOptions, type DevtoolsServer } from './server/devtools.js'
 import { SourceTagsPlugin } from './rspack.js'
+import { configEntries } from './server/entry.js'
 import { API_BASE } from './shared/types.js'
 
 export type { BeastDevtoolsOptions }
@@ -38,6 +39,11 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): RsbuildPlugin
           ...options,
           root: api.context.rootPath,
           editorUrl: (location) => `/__open-in-editor?file=${encodeURIComponent(location)}`,
+          entries: () => {
+            const config = api.getNormalizedConfig()
+            const environments = Object.values(config.environments ?? {}).map((environment) => environment.source.entry)
+            return configEntries([config.source.entry, ...environments], api.context.rootPath)
+          },
         })
         devtools.watch()
         server.middlewares.use(API_BASE, devtools.middleware)

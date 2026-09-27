@@ -1,5 +1,6 @@
 import type { Compiler, DevServerMiddleware, RspackPluginInstance } from '@rspack/core'
 import { CLIENT_ENTRY, createDevtoolsServer, PACKAGE_ROOT, SOURCE_TAGS_LOADER, type BeastDevtoolsOptions } from './server/devtools.js'
+import { configEntries } from './server/entry.js'
 import type { SourceTagsLoaderOptions } from './server/source-tags-loader.js'
 import { API_BASE } from './shared/types.js'
 
@@ -41,6 +42,7 @@ export class BeastDevtoolsRspackPlugin implements RspackPluginInstance {
         ...this.options,
         root: compiler.context,
         editorUrl: (location) => `/rspack-dev-server/open-editor?fileName=${encodeURIComponent(location)}`,
+        entries: () => configEntries(compiler.options.entry, compiler.context),
       })
       devtools.watch()
       compiler.hooks.shutdown.tap(NAME, devtools.close)

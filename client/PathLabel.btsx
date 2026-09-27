@@ -1,0 +1,21 @@
+module
+  interface PathLabelProps {
+    path: string
+  }
+
+props { path }: PathLabelProps
+
+setup
+  // The directory and extension recede so the file's own name is easy to spot.
+  const slash = path.lastIndexOf('/');
+  const dir = path.slice(0, slash + 1);
+  const file = path.slice(slash + 1);
+  const dot = file.lastIndexOf('.');
+  const name = dot > 0 ? file.slice(0, dot) : file;
+  const extension = dot > 0 ? file.slice(dot) : '';
+
+if dir !== ''
+  span.bdt-path-dir #{dir}
+span.bdt-path-name #{name}
+if extension !== ''
+  span.bdt-path-dir #{extension}

@@ -46,6 +46,7 @@ setup
   const [height, setHeight] = useState(initial.height);
   const [file, setFile] = useState<string | null>(initial.file);
   const [showControlFlow, setShowControlFlow] = useState(initial.showControlFlow);
+  const [componentsView, setComponentsView] = useState(initial.componentsView);
   const [settings, setSettings] = useState<AnalyzerSettings>(initial.settings);
   const [focus, setFocus] = useState<ScrollTarget | null>(null);
   const [revision, setRevision] = useState(0);
@@ -61,8 +62,8 @@ setup
     : runtime.status === 'connecting' ? 'Connecting…' : 'Runtime off';
 
   useEffect(() => {
-    savePreferences({ open, tab, height, file, showControlFlow, settings });
-  }, [open, tab, height, file, showControlFlow, settings]);
+    savePreferences({ open, tab, height, file, showControlFlow, componentsView, settings });
+  }, [open, tab, height, file, showControlFlow, componentsView, settings]);
 
   useEffect(() => onSourceChanged(() => setRevision((value) => value + 1)), []);
 
@@ -201,6 +202,9 @@ if open || docked
         case 'components'
           ComponentsPanel(
             ~ components={project?.components ?? []}
+            ~ entryComponents={project?.entryComponents ?? []}
+            ~ view={componentsView}
+            ~ onViewChange={setComponentsView}
             ~ showControlFlow={showControlFlow}
             ~ onShowControlFlowChange={setShowControlFlow}
             ~ onViewSource={viewSource}

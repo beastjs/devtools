@@ -3,6 +3,7 @@ import type { AnalyzerSettings, ApplyResult, DiffLine, FileReport, FileSummary, 
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
 import { applyRefactor, copyText, openInEditor, undoRefactor } from './api.ts'
+import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
 import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
 
@@ -164,7 +165,8 @@ setup
 FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
 .bdt-pane
   .bdt-toolbar
-    span.bdt-toolbar-title.bdt-mono #{file ?? 'No file selected'}
+    span.bdt-toolbar-title.bdt-mono
+      PathLabel(path={file ?? 'No file selected'})
     .bdt-spacer
     label.bdt-field(title="Template nesting depth above which lines count as too deep")
       | Depth limit
@@ -305,7 +307,8 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
                             each change in pending.result.files key change.path
                               .bdt-plan-file
                                 .bdt-plan-file-head
-                                  span #{change.path}
+                                  span
+                                    PathLabel(path={change.path})
                                   span(className={cx('bdt-badge', change.action === 'create' ? 'is-ok' : 'is-info')}) #{change.action === 'create' ? 'new file' : 'edit'}
                                   span.bdt-added +#{change.added}
                                   span.bdt-removed −#{change.removed}
