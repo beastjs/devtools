@@ -1,12 +1,16 @@
 /**
  * Element picker: hover the app to see which component and `.btsx` line
- * rendered an element, click to open that line in the editor.
+ * rendered an element, click to open that line in the editor. Properties mode
+ * inspects any page element without requiring source tags.
  *
  * It reads the `data-beast-src`/`data-beast-component` attributes the dev
  * server adds to project `.btsx` elements (see `server/source-tags.ts`). The
  * highlight is plain DOM, so moving the pointer never re-renders the overlay.
  */
+import { placeDetailCard } from './picker-position.ts'
 import { COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
+
+export type PickerMode = 'source' | 'properties'
 
 export interface PickedSource {
   component: string
@@ -20,25 +24,40 @@ export interface PickedSource {
 const OVERLAY_HOST = 'beast-devtools'
 const PICKING_CLASS = 'bdt-picking'
 
-/** Start picking; returns a function that stops. `onPick` fires once per click on a tagged element. */
-export function startPicker(onPick: (source: PickedSource) => void, onCancel: () => void): () => void {
+/** Start a hover inspector; returns cleanup. Only source mode calls `onPick`. */
+export function startPicker(onPick: (source: PickedSource) => void, onCancel: () => void, mode: PickerMode = 'source'): () => void {
   const box = document.createElement('div')
   box.className = 'bdt-picker-box'
   const label = document.createElement('div')
-  label.className = 'bdt-picker-label'
+  label.className = mode === 'properties' ? 'bdt-picker-label bdt-properties-label' : 'bdt-picker-label'
   const name = document.createElement('strong')
   const where = document.createElement('span')
   label.append(name, where)
+  const details = document.createElement('dl')
+  const values = new Map<string, HTMLElement>()
+  if (mode === 'properties') {
+    for (const title of ['Type', 'ID', 'H × W', 'Padding', 'Margin']) {
+      const term = document.createElement('dt')
+      term.textContent = title
+      const value = document.createElement('dd')
+      details.append(term, value)
+      values.set(title, value)
+    }
+    const hint = document.createElement('small')
+    hint.textContent = 'Spacing: top / right / bottom / left · Esc to exit'
+    label.append(details, hint)
+  }
   document.body.append(box, label)
   document.documentElement.classList.add(PICKING_CLASS)
 
   let current: Element | null = null
   let visible = false
+  let detailTimer: ReturnType<typeof setTimeout> | undefined
 
-  const show = (element: Element | null) => {
+  const show = (element: Element | null, revealDetails = false) => {
     current = element
     const source = element === null ? null : readSource(element)
-    if (element === null || source === null) {
+    if (element === null || (mode === 'source' && source === null)) {
       visible = false
       box.classList.remove('is-visible')
       label.classList.remove('is-visible')
@@ -54,15 +73,36 @@ export function startPicker(onPick: (source: PickedSource) => void, onCancel: ()
     box.style.transform = `translate(${rect.left}px, ${rect.top}px)`
     box.style.width = `${rect.width}px`
     box.style.height = `${rect.height}px`
-    box.style.borderRadius = cappedRadius(getComputedStyle(element).borderRadius, Math.min(rect.width, rect.height) / 2)
+    const style = getComputedStyle(element)
+    box.style.borderRadius = cappedRadius(style.borderRadius, Math.min(rect.width, rect.height) / 2)
 
-    name.textContent = source.component
-    where.textContent = `${source.path}:${source.line}`
-    // Above the element when there is room, otherwise just inside its top edge.
+    if (mode === 'properties') {
+      name.textContent = 'Element properties'
+      where.textContent = source === null ? '' : source.component
+      const type = element.getAttribute('type')
+      values.get('Type')!.textContent = type ? `${element.localName} (${type})` : element.localName
+      values.get('ID')!.textContent = element.id || '—'
+      values.get('H × W')!.textContent = `${Number(rect.height.toFixed(2))} × ${Number(rect.width.toFixed(2))} px`
+      values.get('Padding')!.textContent = [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].join(' / ')
+      values.get('Margin')!.textContent = [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft].join(' / ')
+    } else if (source !== null) {
+      name.textContent = source.component
+      where.textContent = `${source.path}:${source.line}`
+    }
     const height = label.offsetHeight
-    const top = rect.top - height - 4 >= 0 ? rect.top - height - 4 : Math.max(0, rect.top) + 4
-    const left = Math.min(Math.max(0, rect.left), Math.max(0, window.innerWidth - label.offsetWidth - 4))
-    label.style.transform = `translate(${left}px, ${top}px)`
+    let showLabel = true
+    if (mode === 'properties') {
+      const position = revealDetails
+        ? placeDetailCard(rect, label.offsetWidth, height, window.innerWidth, window.innerHeight)
+        : null
+      showLabel = position !== null
+      if (position !== null) label.style.transform = `translate(${position.left}px, ${position.top}px)`
+    } else {
+      const preferredTop = rect.top - height - 4 >= 0 ? rect.top - height - 4 : Math.max(0, rect.top) + 4
+      const top = Math.max(4, Math.min(preferredTop, window.innerHeight - height - 4))
+      const left = Math.min(Math.max(0, rect.left), Math.max(0, window.innerWidth - label.offsetWidth - 4))
+      label.style.transform = `translate(${left}px, ${top}px)`
+    }
 
     if (snap) {
       void box.offsetWidth // commit the snapped position before transitions return
@@ -71,21 +111,40 @@ export function startPicker(onPick: (source: PickedSource) => void, onCancel: ()
     }
     visible = true
     box.classList.add('is-visible')
-    label.classList.add('is-visible')
+    label.classList.toggle('is-visible', showLabel)
   }
 
-  const onMove = (event: PointerEvent) => show(tagged(event.target))
-  const onScroll = () => show(current !== null && current.isConnected ? current : null)
+  const targetElement = (event: Event) => {
+    const path = event.composedPath()
+    if (path.some(inOverlay)) return null
+    const target = path.find((node): node is Element => node instanceof Element) ?? null
+    return mode === 'properties' ? target : tagged(target)
+  }
+  // Outline immediately; restart the card's delay on movement, scroll or resize.
+  const update = (element: Element | null) => {
+    clearTimeout(detailTimer)
+    show(element)
+    if (mode === 'properties' && element !== null) {
+      detailTimer = setTimeout(() => show(element.isConnected ? element : null, true), 200)
+    }
+  }
+  const onMove = (event: PointerEvent) => update(targetElement(event))
+  const onLeave = () => update(null)
+  const onOut = (event: PointerEvent) => {
+    if (event.relatedTarget === null) onLeave()
+  }
+  const onScroll = () => update(current !== null && current.isConnected ? current : null)
   // Swallow the whole press so the app neither focuses, drags nor clicks.
   const onPress = (event: Event) => {
-    if (inOverlay(event.target)) return
+    if (event.composedPath().some(inOverlay)) return
     event.preventDefault()
     event.stopImmediatePropagation()
   }
   const onClick = (event: MouseEvent) => {
-    if (inOverlay(event.target)) return
+    if (event.composedPath().some(inOverlay)) return
     onPress(event)
-    const element = tagged(event.target)
+    if (mode === 'properties') return
+    const element = targetElement(event)
     const source = element === null ? null : readSource(element)
     if (source !== null) onPick(source)
   }
@@ -99,6 +158,8 @@ export function startPicker(onPick: (source: PickedSource) => void, onCancel: ()
   const capture = { capture: true } as const
   const presses = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'dblclick', 'contextmenu'] as const
   window.addEventListener('pointermove', onMove, capture)
+  window.addEventListener('pointerout', onOut, capture)
+  window.addEventListener('blur', onLeave)
   window.addEventListener('scroll', onScroll, capture)
   window.addEventListener('resize', onScroll)
   window.addEventListener('click', onClick, capture)
@@ -106,7 +167,10 @@ export function startPicker(onPick: (source: PickedSource) => void, onCancel: ()
   for (const type of presses) window.addEventListener(type, onPress, capture)
 
   return () => {
+    clearTimeout(detailTimer)
     window.removeEventListener('pointermove', onMove, capture)
+    window.removeEventListener('pointerout', onOut, capture)
+    window.removeEventListener('blur', onLeave)
     window.removeEventListener('scroll', onScroll, capture)
     window.removeEventListener('resize', onScroll)
     window.removeEventListener('click', onClick, capture)

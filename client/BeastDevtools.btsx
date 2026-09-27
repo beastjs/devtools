@@ -4,7 +4,7 @@ import ComponentsPanel from './ComponentsPanel.btsx'
 import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
 import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
-import { startPicker } from './picker.ts'
+import { startPicker, type PickerMode } from './picker.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
 import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
 
@@ -14,7 +14,7 @@ module
     { id: 'inspector', label: 'BTSX → TSRX' },
     { id: 'refactor', label: 'Refactor' },
   ]
-  const LOGO_PATH = 'm8.393 1.002-.205.006a7.3 7.3 0 0 0-3.024.742 7.43 7.43 0 0 0-3.786 4.317 7.3 7.3 0 0 0-.375 2.145 7.34 7.34 0 0 0 .941 3.808 7.5 7.5 0 0 0 2.653 2.731 7.37 7.37 0 0 0 4.231 1.042 7 7 0 0 0 .917-.11 7.4 7.4 0 0 0 4.446-2.673 7.37 7.37 0 0 0 1.597-4.109c.012-.157.012-.828 0-.994a7.3 7.3 0 0 0-.747-2.768 7.3 7.3 0 0 0-1.128-1.67 11 11 0 0 0-.577-.577 7.4 7.4 0 0 0-2.612-1.516 7.5 7.5 0 0 0-2.099-.368 6 6 0 0 1-.232-.006M8.11 3.488a5.4 5.4 0 0 0-.808.114 5 5 0 0 0-1.074.379l-.047.024 1.11 1.11 1.11 1.109 1.109-1.11 1.11-1.11-.048-.023a4.9 4.9 0 0 0-1.811-.487 8 8 0 0 0-.651-.006M3.955 6.281a4.9 4.9 0 0 0-.48 1.854 4.9 4.9 0 0 0 .503 2.441l.024.047 1.11-1.11L6.22 8.405l-1.11-1.11L4 6.184zm7.736 1.014-1.11 1.11 1.11 1.109 1.11 1.11.023-.048a4.94 4.94 0 0 0 .503-2.433 5 5 0 0 0-.497-1.898l-.03-.06zM7.29 11.697l-1.108 1.108.097.046c.562.27 1.164.424 1.817.468.165.01.606.005.761-.01a5 5 0 0 0 1.668-.458l.097-.046-1.108-1.108c-.61-.61-1.11-1.109-1.112-1.109s-.502.499-1.112 1.109'
+  const LOGO_PATH = 'm12.01.001c.002.002.152.006.333.01 1.672.036 3.366.451 4.905 1.204a12.06 12.06 0 0 1 6.141 7.002c.375 1.124.581 2.305.608 3.48a11.9 11.9 0 0 1-1.027 5.183c-.108.245-.355.736-.5.993a12.1 12.1 0 0 1-3.417 3.843c-.203.15-.666.456-.886.588a11.95 11.95 0 0 1-5.648 1.7c-.114.008-.978.008-1.028.001a12 12 0 0 1-1.675-.189 12.03 12.03 0 0 1-7.211-4.336 12.3 12.3 0 0 1-1.582-2.6c-.58-1.314-.89-2.565-1.008-4.065-.02-.255-.02-1.343 0-1.613.122-1.632.512-3.076 1.212-4.49a12 12 0 0 1 1.828-2.708c.19-.214.726-.75.936-.937A12 12 0 0 1 8.228.608a12 12 0 0 1 3.036-.585 10 10 0 0 1 .369-.011 10 10 0 0 0 .377-.011m1.768 4.219a9 9 0 0 0-1.31-.186c-.22-.011-.852-.006-1.056.01a8 8 0 0 0-2.938.79l-.077.039 1.8 1.8 1.8 1.799 1.799-1.8 1.8-1.8-.077-.038a8 8 0 0 0-1.74-.614m6.208 7.351a8 8 0 0 0-.777-3.006l-.075-.157-1.8 1.8-1.8 1.8 1.799 1.8 1.8 1.8.038-.077a7.9 7.9 0 0 0 .802-2.92c.021-.252.028-.81.013-1.04M8.46 12.01l-1.8-1.8-1.799-1.8-.048.097a8.1 8.1 0 0 0-.806 3.078c-.03.564.01 1.21.11 1.793.127.73.389 1.53.705 2.154l.04.077 1.799-1.8zm7.138 7.137L13.8 17.35c-.99-.989-1.8-1.798-1.804-1.798-.003 0-.814.81-1.803 1.798l-1.797 1.797.156.075c.835.4 1.727.645 2.706.742a12 12 0 0 0 1.235.017 8 8 0 0 0 2.947-.759z'
 
   const initial = loadPreferences()
 
@@ -29,13 +29,18 @@ module
   }
 
 component BeastLogo
-  svg.bdt-logo(viewBox="0 0 16 16" fill="none" aria-hidden="true")
+  svg.bdt-logo(viewBox="0 0 24 24" fill="none" aria-hidden="true")
     path(fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d={LOGO_PATH})
 
 component PickIcon
   svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
     path(d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round")
     circle(cx="8" cy="8" r="1.75" fill="currentColor")
+
+component PropertiesIcon
+  svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
+    rect(x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5")
+    path(d="M5 2v3M8 2v2M11 2v3M2 5h3M2 8h2M2 11h3" stroke="currentColor" stroke-width="1.5")
 
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
@@ -54,7 +59,10 @@ setup
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentRefactor | null>(null);
-  const [picking, setPicking] = useState(false);
+  const [pickerMode, setPickerMode] = useState<PickerMode | null>(null);
+  const picking = pickerMode === 'source';
+  const inspecting = pickerMode === 'properties';
+  const inspectTitle = inspecting ? 'Stop inspecting properties (Esc)' : 'Inspect element properties (Alt+Shift+E)';
   const pickTitle = picking ? 'Stop picking (Esc)' : 'Pick an element to open its source (Alt+Shift+C)';
   const suggestionCount = project?.files.reduce((sum, entry) => sum + entry.suggestions, 0) ?? 0;
   const status = runtime.status === 'connected'
@@ -69,9 +77,14 @@ setup
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyE') {
+        event.preventDefault();
+        setPickerMode((value) => value === 'properties' ? null : 'properties');
+        return;
+      }
       if (isPickShortcut(event)) {
         event.preventDefault();
-        setPicking((value) => !value);
+        setPickerMode((value) => value === 'source' ? null : 'source');
         return;
       }
       if (!isToggleShortcut(event)) return;
@@ -97,17 +110,18 @@ setup
     if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
   };
 
-  // One pick opens the element's source line and ends picking, as does Escape.
+  // Source mode ends on a pick; properties mode stays active until toggled or Escape.
   useEffect(() => {
-    if (!picking) return;
+    if (pickerMode === null) return;
     return startPicker(
       (source) => {
-        setPicking(false);
+        setPickerMode(null);
         openInEditor(source.path, source.line, source.column);
       },
-      () => setPicking(false),
+      () => setPickerMode(null),
+      pickerMode,
     );
-  }, [picking]);
+  }, [pickerMode]);
 
   // The project list refreshes whenever a .btsx file changes on disk.
   useEffect(() => {
@@ -189,8 +203,10 @@ if open || docked
             if item.id === 'refactor' && suggestionCount > 0
               span.bdt-tab-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
       .bdt-spacer
-      button(type="button" className={cx('bdt-icon-button', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPicking((value) => !value)})
+      button(type="button" className={cx('bdt-icon-button', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
         PickIcon
+      button(type="button" className={cx('bdt-icon-button', inspecting && 'is-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
+        PropertiesIcon
       span.bdt-status
         span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')})
         | #{status}
@@ -232,9 +248,11 @@ if open || docked
             ~ onRecentChange={setRecent}
             ~ )
 div(className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
-  button(type="button" className={cx('bdt-launcher-pick', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPicking((value) => !value)})
+  button(type="button" className={cx('bdt-launcher-pick bg-white/50 backdrop-blur-3xl', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
     PickIcon
-  button.bdt-launcher(type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
+  button( type="button" className={cx('bdt-launcher-pick bg-white/70 backdrop-blur-3xl hover:text-active!', inspecting && 'is-prop-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
+    PropertiesIcon
+  button.bdt-launcher(className=' backdrop-blur-3xl' type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
     BeastLogo
-    span Beast
-    span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')} aria-label={status})
+    // span
+    // span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')} aria-label={status})

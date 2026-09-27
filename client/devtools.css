@@ -1,6 +1,6 @@
 /*
  * Beast DevTools overlay. Every selector is prefixed with `bdt-` and the root
- * resets its subtree, so the overlay renders the same with or without the host
+
  * app's Tailwind preflight or global element styles.
  */
 
@@ -21,6 +21,9 @@
   --bdt-bad: #ff5d6c;
   --bdt-info: #7cb7ff;
   --bdt-focus: #45c195;
+  --bdt-active: oklch(0.6278 0.204 254.62);
+  --bdt-active-soft: oklch(0.6278 0.204 254.62);
+  --color-active-soft: oklch(0.6278 0.204 254.62);
   --bdt-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   /* Long, soft landing for things arriving; a quicker, accelerating exit. */
   --bdt-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -120,15 +123,15 @@
   place-items: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--bdt-line-2);
+  border: 1px solid var(--bdt-line-3);
   border-radius: 999px;
-  background: linear-gradient(145deg, #2a2b29, #111211 72%);
-  box-shadow: 0 10px 28px rgba(15, 16, 14, 0.28);
-  color: var(--bdt-muted);
+  box-shadow: 0 10px 28px rgba(15, 16, 14, 0.21);
+  opacity: 0.8;
+  /*color: var(--bdt-muted);*/
 }
 
 .bdt-launcher-pick:hover {
-  color: var(--bdt-text);
+  opacity: 1;
 }
 
 .bdt-launcher-pick svg {
@@ -139,29 +142,27 @@
 
 .bdt-root .is-picking {
   color: var(--bdt-accent);
-  background: var(--bdt-accent-soft);
+  background: #ffffff10;
+}
+
+.bdt-root .is-prop-picking {
+  color: var(--bdt-active);
+  background: #ffffff10;
 }
 
 .bdt-launcher {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   height: 36px;
-  padding: 0 14px 0 10px;
-  border: 1px solid var(--bdt-line-2);
+  width: 36px;
   border-radius: 999px;
-  background: linear-gradient(145deg, #2a2b29, #111211 72%);
-  box-shadow: 0 10px 28px rgba(15, 16, 14, 0.28);
+  background: linear-gradient(145deg, #2a2b2930, #11121120 72%);
   font-weight: 600;
-  color: var(--bdt-text);
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease;
 }
 
 .bdt-launcher:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 14px 32px rgba(15, 16, 14, 0.34);
+  border: 1px solid rgba(15, 16, 14, 0.32);
 }
 
 .bdt-launcher-dot {
@@ -177,11 +178,9 @@
 }
 
 .bdt-logo {
-  display: block;
-  width: 18px;
-  height: 18px;
-  color: var(--bdt-accent);
-  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--bdt-ink);
 }
 
 .bdt-dock {
@@ -1528,9 +1527,9 @@ html.bdt-resizing * {
 .bdt-plan {
   display: grid;
   gap: 8px;
-  padding: 10px;
-  border: 1px solid rgba(255, 65, 90, 0.35);
-  border-radius: 9px;
+  padding: 6px;
+  /*border: 1px solid rgba(255, 65, 90, 0.35);*/
+  border-radius: 7px;
   background: var(--bdt-bg);
   cursor: default;
 }
@@ -1683,7 +1682,13 @@ html.bdt-resizing * {
   background: #121312;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   color: #f2f2ee;
-  font: 12px/1.4 ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font:
+    12px/1.4 ui-monospace,
+    SFMono-Regular,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
   letter-spacing: normal;
   text-align: left;
   white-space: nowrap;
@@ -1699,7 +1704,6 @@ html.bdt-resizing * {
   text-overflow: ellipsis;
   color: #a4a5a0;
 }
-
 
 html.bdt-picking,
 html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
@@ -1720,4 +1724,54 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   .bdt-block {
     animation: none;
   }
+}
+
+/* Computed element properties share the picker's non-interactive highlight. */
+.bdt-properties-label {
+  /* Hide immediately while moving; never animate the card across its target. */
+  visibility: hidden;
+  transition: none;
+  display: block;
+  width: 340px;
+  max-height: calc(100vh - 8px);
+  overflow: hidden;
+  padding: 10px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bdt-properties-label > span {
+  display: block;
+}
+
+.bdt-properties-label dl {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 10px 0;
+  padding: 0;
+  font: inherit;
+}
+
+.bdt-properties-label dt,
+.bdt-properties-label dd {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+}
+
+.bdt-properties-label dt,
+.bdt-properties-label small {
+  color: #a4a5a0;
+}
+
+.bdt-properties-label small {
+  display: block;
+  font:
+    10px/1.5 ui-monospace,
+    monospace;
+}
+
+.bdt-properties-label.is-visible {
+  visibility: visible;
 }

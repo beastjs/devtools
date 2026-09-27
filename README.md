@@ -36,6 +36,7 @@ Production builds are untouched. The plugin runs on the dev server only.
 | Capability | What it does | Why it matters |
 | --- | --- | --- |
 | **Components** | Live component tree with hooks, context and effects | Debug state without logging |
+| **Element properties** | Hover HTML or SVG elements to see spacing, size, ID and type | Inspect layout without source tags |
 | **Element picker** | Hover the page to see a component and its `.btsx` line | Go from pixels to source |
 | **BTSX → TSRX** | Source and compiled output, linked line by line | See what Beast generates |
 | **Refactor** | Finds deep nesting, repeated markup and sibling runs | Keeps templates readable |
@@ -150,7 +151,8 @@ click the **Beast** button in the bottom-right corner.
 | --- | --- |
 | Open or close the panel | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, or the **Beast** button |
 | Start or stop the element picker | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, or the crosshair button |
-| Cancel picking | <kbd>Esc</kbd> |
+| Start or stop element properties | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or the ruler button |
+| Cancel picking or inspecting | <kbd>Esc</kbd> |
 | Resize the panel | Drag its top edge |
 | Resize a pane | Drag the edge between two panes |
 | Reset a pane's width | Double-click that edge |
@@ -168,6 +170,23 @@ picking.
 
 While the picker is on, clicks go to the picker, not your app. The overlay's
 own controls keep working.
+
+### Element properties
+
+Click the ruler button in the launcher or panel toolbar, or press
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. Hover a page element to see its
+HTML/SVG tag (and `type` attribute when present), ID, rendered height × width
+in pixels, and computed padding and margin for top / right / bottom / left.
+The detail card appears after 200 ms without pointer movement and is placed
+outside the element. If no side has enough room in the viewport, only the
+outline is shown. Elements without an ID show **—**. Dimensions use the element's bounding
+rectangle, including borders and CSS transforms.
+
+This mode works without source tags or the Octane runtime inspection hook.
+Only one picker mode is active at a time. App clicks are suppressed while
+inspecting; the DevTools controls remain usable. Press <kbd>Esc</kbd> or toggle
+the ruler button to exit. Elements inside iframes and closed shadow roots
+are inspected at their containing element.
 
 ### Components
 
