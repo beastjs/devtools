@@ -6,6 +6,11 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ### Added
 
+- **Resize on the page**: the element open in the Elements panel gets a thin
+  outline with a handle on each side. Drag the right or bottom side to set its
+  width or height. The left and top sides also adjust the margin, so the
+  opposite side stays put. Each drag is one undo step, and
+  <kbd>Esc</kbd> cancels a drag.
 - **Grouped Elements panel**: DOM properties you can edit, such as
   `textContent`, `id` and `className`, are listed first. Styles and read-only
   properties are grouped by category in a two-column grid. Click a heading to

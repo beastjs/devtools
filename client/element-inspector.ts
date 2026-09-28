@@ -8,6 +8,14 @@ export interface ElementProperty {
   type?: 'boolean' | 'number' | 'string'
   inline?: boolean
 }
+export interface StyleEdit {
+  /** Applies CSS declarations to the element right away. */
+  set(declarations: Readonly<Record<string, string>>): void
+  /** Keeps the changes as one undo step. */
+  commit(): void
+  /** Restores the inline style from before the edit. */
+  cancel(): void
+}
 export interface ElementSnapshot {
   label: string
   component: string | null
@@ -137,6 +145,34 @@ export class ElementInspection {
       if (Object.is(before, next)) return
       if (!Reflect.set(element, name, next)) throw new Error('This DOM property could not be changed.')
       this.#undo.push(() => { Reflect.set(element, name, before) })
+    }
+  }
+
+  /** Live inline-style changes, such as a drag, that land as one undo step. */
+  beginStyleEdit(): StyleEdit {
+    const element = this.element
+    if (!element.isConnected) throw new Error('This element is no longer on the page. Pick it again.')
+    const style = inlineStyle(element)
+    const before = element.getAttribute('style')
+    const restore = () => {
+      if (before === null) element.removeAttribute('style')
+      else element.setAttribute('style', before)
+    }
+    let done = false
+    return {
+      set: (declarations) => {
+        if (!done) for (const [name, value] of Object.entries(declarations)) style.setProperty(name, value)
+      },
+      commit: () => {
+        if (done) return
+        done = true
+        if (element.getAttribute('style') !== before) this.#undo.push(restore)
+      },
+      cancel: () => {
+        if (done) return
+        done = true
+        restore()
+      },
     }
   }
 
