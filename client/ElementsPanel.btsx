@@ -1,0 +1,151 @@
+import { useEffect, useState } from 'octane'
+import { COMMON_STYLES, type ElementInspection, type ElementProperty, type ElementPropertyGroup } from './element-inspector.ts'
+import { cx } from './util.ts'
+
+module
+  interface ElementsPanelProps {
+    inspection: ElementInspection | null
+    onPick: () => void
+  }
+  interface ElementPropertyRowProps {
+    property: ElementProperty
+    disabled: boolean
+    removable: boolean
+    onCommit: (name: string, value: string | null) => void
+  }
+  const GROUPS: ReadonlyArray<{ id: ElementPropertyGroup; label: string }> = [
+    { id: 'styles', label: 'Styles' },
+    { id: 'attributes', label: 'Attributes' },
+    { id: 'properties', label: 'DOM properties' },
+  ]
+
+component ElementPropertyRow
+  props { property, disabled, removable, onCommit }: ElementPropertyRowProps
+  setup
+    const [draft, setDraft] = useState(property.value);
+    const [editing, setEditing] = useState(false);
+    useEffect(() => { if (!editing) setDraft(property.value); }, [property.value, editing]);
+    const commit = () => {
+      setEditing(false);
+      if (draft !== property.value) onCommit(property.name, draft);
+    };
+  .bdt-element-property
+    label.bdt-element-property-name(title={property.name}) #{property.name}
+    if property.editable
+      input.bdt-input.bdt-element-property-value(
+        ~ aria-label={property.name}
+        ~ value={draft}
+        ~ disabled={disabled}
+        ~ spellcheck="false"
+        ~ onFocus={() => setEditing(true)}
+        ~ onInput={(event) => setDraft(event.currentTarget.value)}
+        ~ onBlur={commit}
+        ~ onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(property.value); setEditing(false); } }}
+        ~ )
+    else
+      span.bdt-element-property-readonly(title={property.value}) #{property.value.length > 240 ? property.value.slice(0, 240) + '…' : property.value}
+    if removable && property.editable
+      button.bdt-icon-button(type="button" disabled={disabled} title={`Remove ${property.name}`} aria-label={`Remove ${property.name}`} onClick={() => onCommit(property.name, null)}) ×
+    elseif property.inline
+      span.bdt-element-inline(title="Inline override") edited
+    else
+      span.bdt-element-inline #{property.editable ? '' : 'read-only'}
+
+props { inspection, onPick }: ElementsPanelProps
+setup
+  const [snapshot, setSnapshot] = useState(() => inspection?.capture() ?? null);
+  const [group, setGroup] = useState<ElementPropertyGroup>('styles');
+  const [query, setQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [newValue, setNewValue] = useState('');
+  const [undoCount, setUndoCount] = useState(inspection?.undoCount ?? 0);
+  const refresh = () => {
+    setSnapshot(inspection?.capture() ?? null);
+    setUndoCount(inspection?.undoCount ?? 0);
+  };
+  useEffect(() => {
+    refresh();
+    setError(null);
+    setQuery('');
+    if (!inspection) return;
+    // Attributes, layout and runtime values can change independently of DevTools.
+    const timer = window.setInterval(refresh, 1000);
+    return () => window.clearInterval(timer);
+  }, [inspection]);
+  const edit = (name: string, value: string | null) => {
+    if (!inspection) return;
+    try {
+      inspection.edit(group, name, value);
+      setError(null);
+      refresh();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+  };
+  const undo = () => {
+    if (!inspection) return;
+    try { inspection.undo(); setError(null); refresh(); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+  };
+  const chooseGroup = (next: ElementPropertyGroup) => { setGroup(next); setQuery(''); setNewName(''); setNewValue(''); setError(null); };
+  const add = (event: SubmitEvent) => {
+    event.preventDefault();
+    if (!inspection || !newName.trim()) return;
+    try {
+      inspection.edit(group, newName.trim(), newValue);
+      setNewName(''); setNewValue(''); setError(null); refresh();
+    } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+  };
+  const search = query.trim().toLowerCase();
+  const rows = (snapshot?.[group] ?? []).filter((entry) => {
+    if (search) return entry.name.toLowerCase().includes(search) || entry.value.toLowerCase().includes(search);
+    return group !== 'styles' || showAll || entry.inline || COMMON_STYLES.has(entry.name);
+  });
+
+section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
+  if snapshot === null
+    .bdt-empty
+      .bdt-empty-card
+        p.bdt-empty-title A closer look
+        p Pick an element to explore its styles, attributes and properties.
+        button.bdt-button-critical(type="button" onClick={onPick}) Pick an element
+  else
+    fragment
+      .bdt-toolbar.bdt-element-toolbar
+        .bdt-element-identity
+          strong.bdt-mono #{snapshot.label}
+          span.bdt-dim #{`${Number(snapshot.width.toFixed(1))} × ${Number(snapshot.height.toFixed(1))} px${snapshot.component ? ' · ' + snapshot.component : ''}`}
+        .bdt-spacer
+        span.bdt-element-live Live edits
+        button.bdt-button(type="button" disabled={undoCount === 0 || !snapshot.connected} onClick={undo}) Undo#{undoCount > 0 ? ' · ' + undoCount : ''}
+        button.bdt-button(type="button" onClick={refresh}) Refresh
+        button.bdt-button-critical(type="button" onClick={onPick}) Pick another
+      if !snapshot.connected
+        p.bdt-element-notice(role="status") This element was removed from the page. Pick it again to continue editing.
+      if error !== null
+        p.bdt-element-notice.is-error(role="alert") #{error}
+      .bdt-element-workspace
+        aside.bdt-element-nav
+          each item in GROUPS key item.id
+            button(type="button" className={cx('bdt-element-group', group === item.id && 'is-active')} aria-pressed={group === item.id} onClick={() => chooseGroup(item.id)})
+              span #{item.label}
+              span.bdt-dim #{snapshot[item.id].length}
+          p.bdt-element-note Changes apply to the live page. Reloading restores the app’s original values.
+        .bdt-element-content
+          .bdt-element-filter
+            input.bdt-input(type="search" aria-label="Filter element properties" placeholder="Find a property or value…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
+            if group === 'styles'
+              label.bdt-element-all
+                input(type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.currentTarget.checked)})
+                | All computed styles
+            span.bdt-dim #{rows.length} properties
+          .bdt-element-properties
+            if rows.length === 0
+              p.bdt-element-note No matching properties.
+            each property in rows key `${group}:${property.name}`
+              ElementPropertyRow(property={property} disabled={!snapshot.connected} removable={group === 'attributes' || (group === 'styles' && !!property.inline)} onCommit={edit})
+          if group !== 'properties'
+            form.bdt-element-add(onSubmit={add})
+              input.bdt-input(aria-label={group === 'styles' ? 'New CSS property' : 'New attribute'} placeholder={group === 'styles' ? 'CSS property' : 'Attribute name'} value={newName} disabled={!snapshot.connected} onInput={(event) => setNewName(event.currentTarget.value)})
+              input.bdt-input(aria-label="New property value" placeholder="Value" value={newValue} disabled={!snapshot.connected} onInput={(event) => setNewValue(event.currentTarget.value)})
+              button.bdt-button(type="submit" disabled={!snapshot.connected || !newName.trim()}) Add

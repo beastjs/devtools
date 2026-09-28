@@ -2,18 +2,21 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'octane'
 import type { AnalyzerSettings, FileReport, ProjectReport } from '../shared/types.ts'
 import ProjectPicker from './ProjectPicker.btsx'
 import ComponentsPanel from './ComponentsPanel.btsx'
+import ElementsPanel from './ElementsPanel.btsx'
+import { ElementInspection } from './element-inspector.ts'
 import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
 import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
-import { startPicker, type PickerMode } from './picker.ts'
+import { startComponentFinder, startElementPicker, type ElementTool } from './element-tools.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
 import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
 import type { RuntimeSnapshot } from './runtime.ts'
 
 module
   const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
-    { id: 'components', label: 'Components' },
     { id: 'inspector', label: 'BTSX → TSRX' },
+    { id: 'components', label: 'Components' },
+    { id: 'elements', label: 'Elements' },
     { id: 'refactor', label: 'Refactor' },
   ]
   const LOGO_PATH = 'm12.01.001c.002.002.152.006.333.01 1.672.036 3.366.451 4.905 1.204a12.06 12.06 0 0 1 6.141 7.002c.375 1.124.581 2.305.608 3.48a11.9 11.9 0 0 1-1.027 5.183c-.108.245-.355.736-.5.993a12.1 12.1 0 0 1-3.417 3.843c-.203.15-.666.456-.886.588a11.95 11.95 0 0 1-5.648 1.7c-.114.008-.978.008-1.028.001a12 12 0 0 1-1.675-.189 12.03 12.03 0 0 1-7.211-4.336 12.3 12.3 0 0 1-1.582-2.6c-.58-1.314-.89-2.565-1.008-4.065-.02-.255-.02-1.343 0-1.613.122-1.632.512-3.076 1.212-4.49a12 12 0 0 1 1.828-2.708c.19-.214.726-.75.936-.937A12 12 0 0 1 8.228.608a12 12 0 0 1 3.036-.585 10 10 0 0 1 .369-.011 10 10 0 0 0 .377-.011m1.768 4.219a9 9 0 0 0-1.31-.186c-.22-.011-.852-.006-1.056.01a8 8 0 0 0-2.938.79l-.077.039 1.8 1.8 1.8 1.799 1.799-1.8 1.8-1.8-.077-.038a8 8 0 0 0-1.74-.614m6.208 7.351a8 8 0 0 0-.777-3.006l-.075-.157-1.8 1.8-1.8 1.8 1.799 1.8 1.8 1.8.038-.077a7.9 7.9 0 0 0 .802-2.92c.021-.252.028-.81.013-1.04M8.46 12.01l-1.8-1.8-1.799-1.8-.048.097a8.1 8.1 0 0 0-.806 3.078c-.03.564.01 1.21.11 1.793.127.73.389 1.53.705 2.154l.04.077 1.799-1.8zm7.138 7.137L13.8 17.35c-.99-.989-1.8-1.798-1.804-1.798-.003 0-.814.81-1.803 1.798l-1.797 1.797.156.075c.835.4 1.727.645 2.706.742a12 12 0 0 0 1.235.017 8 8 0 0 0 2.947-.759z'
@@ -25,21 +28,26 @@ module
     return event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyD'
   }
 
-  /** Alt+Shift+C toggles the element picker. */
-  function isPickShortcut(event: KeyboardEvent): boolean {
+  /** Alt+Shift+C toggles Component Finder. */
+  function isComponentFinderShortcut(event: KeyboardEvent): boolean {
     return event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyC'
+  }
+
+  /** Alt+Shift+E toggles Element Picker. */
+  function isElementPickerShortcut(event: KeyboardEvent): boolean {
+    return event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyE'
   }
 
 component BeastLogo
   svg.bdt-logo(viewBox="0 0 24 24" fill="none" aria-hidden="true" width='20' height='20')
     path(fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d={LOGO_PATH})
 
-component PickIcon
+component ComponentFinderIcon
   svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
     path(d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round")
     circle(cx="8" cy="8" r="1.75" fill="currentColor")
 
-component PropertiesIcon
+component ElementPickerIcon
   svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
     rect(x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5")
     path(d="M5 2v3M8 2v2M11 2v3M2 5h3M2 8h2M2 11h3" stroke="currentColor" stroke-width="1.5")
@@ -49,11 +57,11 @@ module
     tab: TabId
     setTab: (next: TabId | ((prev: TabId) => TabId)) => void
     suggestionCount: number
-    picking: boolean
-    pickTitle: 'Stop picking (Esc)' | 'Pick an element to open its source (Alt+Shift+C)'
-    setPickerMode: (next: PickerMode | ((prev: PickerMode | null) => PickerMode | null) | null) => void
-    inspecting: boolean
-    inspectTitle: 'Stop inspecting properties (Esc)' | 'Inspect element properties (Alt+Shift+E)'
+    componentFinderActive: boolean
+    componentFinderTitle: 'Stop Component Finder (Esc)' | 'Component Finder (Alt+Shift+C)'
+    setActiveElementTool: (next: ElementTool | ((prev: ElementTool | null) => ElementTool | null) | null) => void
+    elementPickerActive: boolean
+    elementPickerTitle: 'Stop Element Picker (Esc)' | 'Element Picker (Alt+Shift+E)'
     project: ProjectReport | null
     projectId: string
     selectProject: (id: string) => void
@@ -67,10 +75,11 @@ module
     tab: TabId
     setTab: (next: TabId | ((prev: TabId) => TabId)) => void
     suggestionCount: number
+    componentCount: number
   }
 
 component MainTabs
-  props { tab, setTab, suggestionCount }: MainTabsProps
+  props { tab, setTab, suggestionCount, componentCount }: MainTabsProps
   nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels" className="has[:focus]:rounded-sm! rounded-full")
     each item in TABS key item.id
       button(
@@ -81,26 +90,25 @@ component MainTabs
         ~ onClick={() => setTab(item.id)}
         ~ )
         | #{item.label}
+        if item.id === 'components' && componentCount > 0
+          span.bdt-tab-count.bdt-component-count #{componentCount ?? 0}
         if item.id === 'refactor' && suggestionCount > 0
-          span.bdt-tab-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
+          span.bdt-tab-count.bdt-refactor-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
 
 component BdtTopbar
-  props { tab, setTab, suggestionCount, picking, pickTitle, setPickerMode, inspecting, inspectTitle, project, projectId, selectProject, runtime, status, setOpen }: BdtTopbarProps
+  props { tab, setTab, suggestionCount, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, project, projectId, selectProject, runtime, status, setOpen }: BdtTopbarProps
   header.bdt-topbar
     .bdt-brand
       BeastLogo
       div(className="skew-2 font-semibold! text-text text-base!") Beast
-      span.bdt-brand-sub DevTools
-    MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount})
+      span.bdt-brand-sub Devtools
+    MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentCount={runtime.componentCount})
     .bdt-spacer
-    button(type="button" className={cx('bdt-icon-button', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
-      PickIcon
-    button(type="button" className={cx('bdt-icon-button', inspecting && 'is-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
-      PropertiesIcon
+    button(type="button" className={cx('bdt-icon-button', componentFinderActive && 'is-component-finder-active')} aria-pressed={componentFinderActive} aria-label="Component Finder" title={componentFinderTitle} onClick={() => setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder')})
+      ComponentFinderIcon
+    button(type="button" className={cx('bdt-icon-button', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})
+      ElementPickerIcon
     ProjectPicker(root={project?.root ?? ''} external={projectId !== ''} onSelect={selectProject})
-    span.bdt-status
-      span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')})
-      | #{status}
     button.bdt-icon-button(type="button" aria-label="Close Beast DevTools" title="Close (Alt+Shift+D)" onClick={() => setOpen(false)})
       svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
         path(d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round")
@@ -108,21 +116,21 @@ component BdtTopbar
 module
   interface DevtoolsInterfaceProps {
     open: boolean
-    picking: boolean
-    pickTitle: 'Stop picking (Esc)' | 'Pick an element to open its source (Alt+Shift+C)'
-    setPickerMode: (next: PickerMode | ((prev: PickerMode | null) => PickerMode | null) | null) => void
-    inspecting: boolean
-    inspectTitle: 'Stop inspecting properties (Esc)' | 'Inspect element properties (Alt+Shift+E)'
+    componentFinderActive: boolean
+    componentFinderTitle: 'Stop Component Finder (Esc)' | 'Component Finder (Alt+Shift+C)'
+    setActiveElementTool: (next: ElementTool | ((prev: ElementTool | null) => ElementTool | null) | null) => void
+    elementPickerActive: boolean
+    elementPickerTitle: 'Stop Element Picker (Esc)' | 'Element Picker (Alt+Shift+E)'
     setOpen: (next: boolean | ((prev: boolean) => boolean)) => void
   }
 
 component DevtoolsInterface
-  props { open, picking, pickTitle, setPickerMode, inspecting, inspectTitle, setOpen }: DevtoolsInterfaceProps
+  props { open, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, setOpen }: DevtoolsInterfaceProps
   div(className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
-    button(type="button" className={cx('bdt-launcher-pick bg-white/50 backdrop-blur-3xl', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
-      PickIcon
-    button( type="button" className={cx('bdt-launcher-pick bg-white/70 backdrop-blur-3xl hover:text-active!', inspecting && 'is-prop-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
-      PropertiesIcon
+    button(type="button" className={cx('bdt-launcher-component-finder bg-white/50 backdrop-blur-3xl', componentFinderActive && 'is-component-finder-active')} aria-pressed={componentFinderActive} aria-label="Component Finder" title={componentFinderTitle} onClick={() => setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder')})
+      ComponentFinderIcon
+    button( type="button" className={cx('bdt-launcher-element-picker bg-white/70 backdrop-blur-3xl hover:text-active!', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})
+      ElementPickerIcon
     button.bdt-launcher(className=' backdrop-blur-3xl' type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
       BeastLogo
 
@@ -147,14 +155,16 @@ setup
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentRefactor | null>(null);
-  const [pickerMode, setPickerMode] = useState<PickerMode | null>(null);
-  const picking = pickerMode === 'source';
-  const inspecting = pickerMode === 'properties';
-  const inspectTitle = inspecting ? 'Stop inspecting properties (Esc)' : 'Inspect element properties (Alt+Shift+E)';
-  const pickTitle = picking ? 'Stop picking (Esc)' : 'Pick an element to open its source (Alt+Shift+C)';
+  const elementInspections = useRef(new WeakMap<Element, ElementInspection>());
+  const [elementInspection, setElementInspection] = useState<ElementInspection | null>(null);
+  const [activeElementTool, setActiveElementTool] = useState<ElementTool | null>(null);
+  const componentFinderActive = activeElementTool === 'component-finder';
+  const elementPickerActive = activeElementTool === 'element-picker';
+  const elementPickerTitle = elementPickerActive ? 'Stop Element Picker (Esc)' : 'Element Picker (Alt+Shift+E)';
+  const componentFinderTitle = componentFinderActive ? 'Stop Component Finder (Esc)' : 'Component Finder (Alt+Shift+C)';
   const suggestionCount = project?.files.reduce((sum, entry) => sum + entry.suggestions, 0) ?? 0;
   const status = runtime.status === 'connected'
-    ? `${runtime.componentCount} component${runtime.componentCount === 1 ? '' : 's'} live`
+    ? `${runtime.componentCount}`
     : runtime.status === 'connecting' ? 'Connecting…' : 'Runtime off';
 
   useEffect(() => {
@@ -165,14 +175,14 @@ setup
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyE') {
+      if (isElementPickerShortcut(event)) {
         event.preventDefault();
-        setPickerMode((value) => value === 'properties' ? null : 'properties');
+        setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker');
         return;
       }
-      if (isPickShortcut(event)) {
+      if (isComponentFinderShortcut(event)) {
         event.preventDefault();
-        setPickerMode((value) => value === 'source' ? null : 'source');
+        setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder');
         return;
       }
       if (!isToggleShortcut(event)) return;
@@ -198,18 +208,28 @@ setup
     if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
   };
 
-  // Source mode ends on a pick; properties mode stays active until toggled or Escape.
+  // Both tools end on selection; Element Picker opens the live editor.
   useEffect(() => {
-    if (pickerMode === null) return;
-    return startPicker(
+    if (activeElementTool === null) return;
+    if (activeElementTool === 'element-picker') return startElementPicker(
+      (element) => {
+        const inspection = elementInspections.current.get(element) ?? new ElementInspection(element);
+        elementInspections.current.set(element, inspection);
+        setElementInspection(inspection);
+        setActiveElementTool(null);
+        setTab('elements');
+        setOpen(true);
+      },
+      () => setActiveElementTool(null),
+    );
+    return startComponentFinder(
       (source) => {
-        setPickerMode(null);
+        setActiveElementTool(null);
         openInEditor(source.path, source.line, source.column);
       },
-      () => setPickerMode(null),
-      pickerMode,
+      () => setActiveElementTool(null),
     );
-  }, [pickerMode]);
+  }, [activeElementTool]);
 
   // The project list refreshes whenever a .btsx file changes on disk.
   useEffect(() => {
@@ -288,7 +308,7 @@ if open || docked
       ~ aria-label="Resize Beast DevTools"
       ~ onPointerDown={(event) => startResize(event, height, setHeight)}
       ~ )
-    BdtTopbar(tab={tab} setTab={setTab} suggestionCount={suggestionCount} picking={picking} pickTitle={pickTitle} setPickerMode={setPickerMode} inspecting={inspecting} inspectTitle={inspectTitle} project={project} projectId={projectId} selectProject={selectProject} runtime={runtime} status={status} setOpen={setOpen})
+    BdtTopbar(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} project={project} projectId={projectId} selectProject={selectProject} runtime={runtime} status={status} setOpen={setOpen})
     div.bdt-body(role="tabpanel" aria-label={TABS.find((item) => item.id === tab)?.label})
       switch tab
         case 'components'
@@ -302,8 +322,14 @@ if open || docked
             ~ onViewSource={viewSource}
             ~ onAnalyze={analyze}
             ~ )
+        case 'elements'
+          ElementsPanel(inspection={elementInspection} onPick={() => setActiveElementTool('element-picker')})
         case 'inspector'
           InspectorPanel(
+            ~ key={projectId}
+            ~ projectId={projectId}
+            ~ recent={recent}
+            ~ onRecentChange={setRecent}
             ~ files={project?.files ?? []}
             ~ file={file}
             ~ report={report}
@@ -325,4 +351,4 @@ if open || docked
             ~ onSettingsChange={setSettings}
             ~ onRecentChange={(value) => { if (generation === projectGeneration.current) setRecent(value); }}
             ~ )
-DevtoolsInterface(open={open} picking={picking} pickTitle={pickTitle} setPickerMode={setPickerMode} inspecting={inspecting} inspectTitle={inspectTitle} setOpen={setOpen})
+DevtoolsInterface(open={open} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} setOpen={setOpen})

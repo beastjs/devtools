@@ -33,7 +33,7 @@ export class BeastDevtoolsRspackPlugin implements RspackPluginInstance {
         // A global entry joins every entrypoint, so the overlay shares the app's Octane runtime.
         new compiler.rspack.EntryPlugin(compiler.context, CLIENT_ENTRY, { name: undefined }).apply(compiler)
       }
-      if (this.options.elementPicker !== false) {
+      if ((this.options.componentFinder ?? this.options.elementPicker) !== false) {
         // Rules are read when the first compilation starts, which is still ahead of us.
         compiler.options.module.rules.push(sourceTagsRule(compiler.context))
       }
@@ -57,7 +57,7 @@ export class BeastDevtoolsRspackPlugin implements RspackPluginInstance {
 }
 
 /**
- * A pre-loader rule that tags `.btsx` elements for the element picker. Beast's
+ * A pre-loader rule that tags `.btsx` elements for Component Finder. Beast's
  * loader is also `enforce: 'pre'`, and loaders run from the last matching rule
  * to the first, so this rule must be added after Beast's.
  */

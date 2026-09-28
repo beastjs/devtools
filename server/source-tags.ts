@@ -4,7 +4,7 @@ import { COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.js'
 
 /**
  * Tag every DOM element of a `.btsx` source with the component that renders it
- * and its `path:line:column`, for the overlay's element picker:
+ * and its `path:line:column`, for the overlay's Component Finder:
  *
  *   li.item(key={id}) #{label}
  *   li.item(data-beast-src="src/List.btsx:4:5" data-beast-component="List" key={id}) #{label}

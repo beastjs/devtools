@@ -11,7 +11,7 @@ const APP = readFileSync(new URL('../test/fixtures/App.btsx', import.meta.url), 
 
 function analyze(source: string, settings: Partial<AnalyzerSettings> = {}, name = 'Fixture', selectionLine?: number): FileAnalysis {
   const { ast } = compileBeastResult(source, { filename: `${name}.btsx`, componentName: name })
-  return analyzeDocument(ast, source, name, { depthLimit: 5, minLines: 8, fileLines: 30, ...settings }, { selectionLine })
+  return analyzeDocument(ast, source, name, { depthLimit: 5, minLines: 8, fileLines: 30, continuationMinProps: 5, ...settings }, { selectionLine })
 }
 
 /** Apply a suggestion the way a developer would: insert the component, replace the section. */

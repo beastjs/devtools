@@ -35,13 +35,13 @@
   --bdt-text: oklch(0.954 0.01 125.68);
   --bdt-muted: #a4a5a0;
   --bdt-dim: #8b8b8b;
-  --bdt-trl: oklch(0.783 0.015 142.21);
+  --bdt-trel: oklch(0.783 0.015 142.21);
   --bdt-accent: #ff415a;
   --bdt-accent-soft: rgba(255, 65, 90, 0.14);
   --bdt-ok: oklch(0.681 0.113 159.68);
   --bdt-warn: #ffb86b;
   --bdt-bad: #ff5d6c;
-  --bdt-info: #7cb7ff;
+  --bdt-info: oklch(0.768 0.121 254.06);
   --bdt-focus: #45c195;
   --bdt-active: oklch(0.6278 0.204 254.62);
   --bdt-active-soft: oklch(0.6278 0.204 254.62);
@@ -140,7 +140,7 @@
     visibility 0s linear 200ms;
 }
 
-.bdt-launcher-pick {
+:is(.bdt-launcher-component-finder, .bdt-launcher-element-picker) {
   display: inline-grid;
   place-items: center;
   width: 36px;
@@ -152,22 +152,22 @@
   /*color: var(--bdt-muted);*/
 }
 
-.bdt-launcher-pick:hover {
+:is(.bdt-launcher-component-finder, .bdt-launcher-element-picker):hover {
   opacity: 1;
 }
 
-.bdt-launcher-pick svg {
+:is(.bdt-launcher-component-finder, .bdt-launcher-element-picker) svg {
   display: block;
   width: 16px;
   height: 16px;
 }
 
-.bdt-root .is-picking {
+.bdt-root .is-component-finder-active {
   color: var(--bdt-accent);
   background: #ffffff10;
 }
 
-.bdt-root .is-prop-picking {
+.bdt-root .is-element-picker-active {
   color: var(--bdt-active);
   background: #ffffff10;
 }
@@ -188,15 +188,15 @@
 }
 
 .bdt-launcher-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   background: var(--bdt-dim);
 }
 
 .bdt-launcher-dot.is-live {
   background: var(--bdt-ok);
-  box-shadow: 0 0 0 3px rgba(95, 211, 154, 0.18);
+  /*box-shadow: 0 0 0 3px rgba(95, 211, 154, 0.18);*/
 }
 
 .bdt-logo {
@@ -293,14 +293,16 @@
 .bdt-tabs {
   display: flex;
   align-items: center;
-  flex: 0 1 auto;
+  justifiy-content: justify-evenly;
+  /*flex: 0 1 auto;*/
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  gap: 3px;
+  gap: 8px;
   padding: 4px;
   background: var(--bdt-bg);
   border: 0.5px solid var(--bdt-bg-2);
+  border-radius: 9px;
 }
 
 .bdt-tab {
@@ -308,14 +310,13 @@
   align-items: center;
   gap: 6px;
   height: 26px;
-  padding: 0 12px;
-  border-radius: 999px;
+  padding: 0 6px 0 10px;
+  border-radius: 6.5px;
   color: var(--bdt-muted);
   font-weight: 600;
   white-space: nowrap;
   letter-spacing: -0.15px;
 }
-
 .bdt-tab:hover {
   color: var(--bdt-text);
 }
@@ -323,15 +324,17 @@
 .bdt-tab.is-active {
   background: var(--bdt-bg-4);
   color: var(--bdt-text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
-
+.bdt-component-count {
+  color: var(--bdt-info);
+}
+.bdt-refactor-count {
+  color: var(--bdt-warn);
+}
 .bdt-tab-count {
   min-width: 18px;
-  padding: 0 3px;
+  padding: 0;
   border-radius: 999px;
-  /*background: var(--bdt-accent-soft);*/
-  color: var(--bdt-warn);
   font-size: 12px;
   line-height: 16px;
   text-align: center;
@@ -1399,7 +1402,7 @@ html.bdt-resizing * {
   min-width: 0;
   font-family: var(--bdt-mono);
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: 14px;
   color: #ffb86b;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1411,16 +1414,17 @@ html.bdt-resizing * {
   height: 8px;
   flex: none;
   border-radius: 4px;
-  margin: 0 0 5px 0;
   background: var(--bdt-info);
 }
 
 .bdt-severity.is-warning {
   background: var(--bdt-warn);
+  margin: 0 0 4.75px 0;
 }
 
 .bdt-severity.is-critical {
   background: var(--bdt-bad);
+  margin: 0 0 4.75px 0;
 }
 
 .bdt-card-reason {
@@ -1650,6 +1654,7 @@ html.bdt-resizing * {
 .bdt-card-title-input:hover,
 .bdt-card-title-input:focus {
   border-bottom-color: var(--bdt-line-2);
+  border-radius: 0px!;
   outline: none;
 }
 
@@ -1659,11 +1664,11 @@ html.bdt-resizing * {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Element picker. The highlight sits on top of the app, outside `.bdt-root`, */
+/* Component Finder and Element Picker. The highlight sits on top of the app, outside `.bdt-root`, */
 /* just under the overlay, and never takes pointer events.                   */
 
-.bdt-picker-box,
-.bdt-picker-label {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight),
+:is(.bdt-component-finder-label, .bdt-element-picker-card) {
   position: fixed;
   top: 0;
   left: 0;
@@ -1673,15 +1678,15 @@ html.bdt-resizing * {
   pointer-events: none;
 }
 
-.bdt-picker-box {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight) {
   border: 1.5px solid #ff415a;
   border-radius: 3px;
   background: rgba(255, 65, 90, 0.1);
 }
 
 /* The box and label glide between elements; `is-snapping` places them without gliding. */
-.bdt-picker-box,
-.bdt-picker-label {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight),
+:is(.bdt-component-finder-label, .bdt-element-picker-card) {
   opacity: 0;
   transition:
     transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1691,17 +1696,17 @@ html.bdt-resizing * {
     opacity 120ms ease;
 }
 
-.bdt-picker-box.is-visible,
-.bdt-picker-label.is-visible {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight).is-visible,
+:is(.bdt-component-finder-label, .bdt-element-picker-card).is-visible {
   opacity: 1;
 }
 
-.bdt-picker-box.is-snapping,
-.bdt-picker-label.is-snapping {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight).is-snapping,
+:is(.bdt-component-finder-label, .bdt-element-picker-card).is-snapping {
   transition: opacity 120ms ease;
 }
 
-.bdt-picker-label {
+:is(.bdt-component-finder-label, .bdt-element-picker-card) {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1724,19 +1729,19 @@ html.bdt-resizing * {
   white-space: nowrap;
 }
 
-.bdt-picker-label strong {
+:is(.bdt-component-finder-label, .bdt-element-picker-card) strong {
   color: #ff415a;
   font-weight: 600;
 }
 
-.bdt-picker-label span {
+:is(.bdt-component-finder-label, .bdt-element-picker-card) span {
   overflow: hidden;
   text-overflow: ellipsis;
   color: #a4a5a0;
 }
 
-html.bdt-picking,
-html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
+html:is(.bdt-component-finder-active, .bdt-element-picker-active),
+html:is(.bdt-component-finder-active, .bdt-element-picker-active) :not(#beast-devtools, #beast-devtools *) {
   cursor: crosshair !important;
 }
 
@@ -1745,8 +1750,8 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   .bdt-dock,
   .bdt-launcher-host,
   .bdt-splitter::after,
-  .bdt-picker-box,
-  .bdt-picker-label {
+  :is(.bdt-component-finder-highlight, .bdt-element-picker-highlight),
+  :is(.bdt-component-finder-label, .bdt-element-picker-card) {
     transition-duration: 1ms !important;
     transition-delay: 0s !important;
   }
@@ -1756,54 +1761,74 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   }
 }
 
-/* Computed element properties share the picker's non-interactive highlight. */
-.bdt-properties-label {
-  /* Hide immediately while moving; never animate the card across its target. */
+/* A quiet, compact hover preview. Details live in the Elements panel. */
+.bdt-element-picker-card {
   visibility: hidden;
   transition: none;
-  display: block;
-  width: 340px;
-  max-height: calc(100vh - 8px);
-  overflow: hidden;
-  padding: 10px 12px;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.bdt-properties-label > span {
-  display: block;
-}
-
-.bdt-properties-label dl {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 6px 10px;
-  margin: 10px 0;
-  padding: 0;
-  font: inherit;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 20px;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 12px 15px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 12px;
+  background: rgba(22,24,23,.96);
+  box-shadow: 0 8px 30px #0003, 0 1px 3px #0004;
+  backdrop-filter: blur(18px);
+  white-space: nowrap;
 }
-
-.bdt-properties-label dt,
-.bdt-properties-label dd {
-  margin: 0;
-  padding: 0;
-  font: inherit;
+.bdt-element-picker-card strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #d9eadf;
+  font-weight: 500;
 }
-
-.bdt-properties-label dt,
-.bdt-properties-label small {
-  color: #a4a5a0;
+.bdt-element-picker-card > span { color: #a4a5a0; font-size: 11px; }
+.bdt-element-picker-card small {
+  grid-column: 1 / -1;
+  color: #838b86;
+  font: 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .02em;
 }
+.bdt-element-picker-card.is-visible { visibility: visible; }
+.bdt-element-picker-highlight { border-color: #81b49b; background: #81b49b0c; }
 
-.bdt-properties-label small {
-  display: block;
-  font:
-    10px/1.5 ui-monospace,
-    monospace;
-}
-
-.bdt-properties-label.is-visible {
-  visibility: visible;
+.bdt-element-toolbar { padding: 14px 18px; gap: 10px; }
+.bdt-element-identity { display: grid; gap: 3px; min-width: 0; }
+.bdt-element-identity strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bdt-element-live { color: var(--bdt-ok); font-size: 10px; white-space: nowrap; }
+.bdt-element-workspace { display: flex; flex: 1; min-height: 0; }
+.bdt-element-nav { width: 190px; flex: none; padding: 12px; border-right: 1px solid var(--bdt-line); overflow: auto; }
+.bdt-element-group { display: flex; justify-content: space-between; width: 100%; padding: 10px; border-radius: 7px; cursor: pointer; background: transparent; text-align: left; }
+.bdt-element-group:hover { background: var(--bdt-bg-3); }
+.bdt-element-group.is-active { background: var(--bdt-bg-3); color: var(--bdt-text); }
+.bdt-element-note { padding: 15px 10px; color: var(--bdt-dim); line-height: 1.7; font-size: 11px; }
+.bdt-element-content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bdt-element-filter { display: flex; align-items: center; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--bdt-line); }
+.bdt-element-filter > .bdt-input { flex: 1; min-width: 90px; }
+.bdt-element-all { display: flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--bdt-muted); }
+.bdt-element-all input { appearance: auto; width: 13px; height: 13px; accent-color: var(--bdt-ok); }
+.bdt-element-properties { flex: 1; min-height: 0; overflow: auto; padding: 4px 18px 12px; }
+.bdt-element-property { display: grid; grid-template-columns: minmax(130px, 32%) minmax(0, 1fr) 65px; align-items: center; gap: 12px; min-height: 37px; border-bottom: 1px solid var(--bdt-line); }
+.bdt-element-property-name { color: var(--bdt-muted); overflow: hidden; text-overflow: ellipsis; font-family: var(--bdt-mono); font-size: 11px; }
+.bdt-element-property .bdt-input { width: 100%; min-width: 0; background: transparent; border-color: transparent; font-family: var(--bdt-mono); font-size: 11px; }
+.bdt-element-property .bdt-input:hover { background: var(--bdt-bg-2); }
+.bdt-element-property .bdt-input:focus { background: var(--bdt-bg-3); border-color: var(--bdt-focus); }
+.bdt-element-property-readonly { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bdt-dim); font: 11px var(--bdt-mono); }
+.bdt-element-inline { text-align: right; color: var(--bdt-dim); font-size: 10px; }
+.bdt-element-property > .bdt-icon-button { justify-self: end; }
+.bdt-element-add { display: flex; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--bdt-line); }
+.bdt-element-add > .bdt-input { flex: 1; min-width: 0; }
+.bdt-element-notice { padding: 8px 18px; color: var(--bdt-warn); border-bottom: 1px solid var(--bdt-line); }
+.bdt-element-notice.is-error { color: var(--bdt-bad); }
+@media (max-width: 720px) {
+  .bdt-element-nav { width: 135px; padding: 6px; }
+  .bdt-element-toolbar { flex-wrap: wrap; }
+  .bdt-element-filter { flex-wrap: wrap; gap: 8px; }
+  .bdt-element-property { grid-template-columns: minmax(85px, 34%) minmax(0, 1fr) 24px; gap: 5px; }
+  .bdt-element-inline { display: none; }
 }
 
 .bdt-project-picker {

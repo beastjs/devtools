@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'octane'
 import type { FileReport, FileSummary } from '../shared/types.ts'
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
-import { openInEditor } from './api.ts'
+import { continueProps, openInEditor, undoRefactor } from './api.ts'
 import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
-import { scrollTarget, type ScrollTarget } from './util.ts'
+import { scrollTarget, type ScrollTarget, type RecentRefactor } from './util.ts'
 
 module
   interface InspectorPanelProps {
+    projectId: string
+    recent: RecentRefactor | null
+    onRecentChange: (recent: RecentRefactor | null) => void
     files: readonly FileSummary[]
     file: string | null
     report: FileReport | null
@@ -23,7 +26,7 @@ module
     line: number
   }
 
-props { files, file, report, loadError, focus, onSelectFile }: InspectorPanelProps
+props { projectId, recent, onRecentChange, files, file, report, loadError, focus, onSelectFile }: InspectorPanelProps
 setup
   const [hover, setHover] = useState<Link | null>(null);
   const [pinned, setPinned] = useState<Link | null>(null);
@@ -38,7 +41,36 @@ setup
   const link = hover ?? pinned;
   const btsxLinked = link === null ? [] : link.side === 'btsx' ? [link.line] : [btsxFor(link.line)].filter((line): line is number => line !== null);
   const tsrxLinked = link === null ? [] : link.side === 'tsrx' ? [link.line] : tsrxFor(link.line);
-  const editorLine = pinned === null ? 1 : pinned.side === 'btsx' ? pinned.line : (btsxFor(pinned.line) ?? 1);
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [savedHash, setSavedHash] = useState<string | null>(null);
+  const selectedLine = pinned === null ? null : pinned.side === 'btsx' ? pinned.line : btsxFor(pinned.line);
+  const editorLine = selectedLine ?? 1;
+  const canContinue = selectedLine !== null && current !== null && current.hash !== savedHash && (current.continuationLines ?? []).includes(editorLine);
+  const convert = async () => {
+    if (!current || !canContinue || saving) return;
+    setSaving(true);
+    setActionError(null);
+    try {
+      const result = await continueProps({ path: current.path, hash: current.hash, line: editorLine, dryRun: false }, projectId);
+      setSavedHash(current.hash);
+      onRecentChange({ undoId: result.undoId!, summary: result.summary });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally { setSaving(false); }
+  };
+  const undo = async () => {
+    if (!recent || saving) return;
+    setSaving(true);
+    setActionError(null);
+    try {
+      await undoRefactor(recent.undoId, projectId);
+      onRecentChange(null);
+      setSavedHash(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally { setSaving(false); }
+  };
   const pinBtsx = (line: number) => {
     setPinned({ side: 'btsx', line });
     const target = tsrxFor(line)[0];
@@ -54,6 +86,7 @@ setup
     shownFile.current = file;
     setPinned(null);
     setHover(null);
+    setActionError(null);
   }, [file]);
   // Reveal a line requested by another panel once its file report arrives.
   useEffect(() => {
@@ -82,7 +115,14 @@ FileList(files={files} active={file} metrics={false} onSelect={onSelectFile})
           span.bdt-badge.is-bad compile error
         .bdt-spacer
         span.bdt-dim.bdt-hint Hover to link lines · click to pin
+        button.bdt-button(type="button" disabled={!canContinue || saving} title="Select an element or component line with inline props, then move each prop to a ~ continuation line" onClick={convert}) #{saving ? 'Saving…' : 'Continue props with ~'}
         button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, editorLine)}) Open in editor
+      if actionError !== null
+        .bdt-diagnostic(role="alert") #{actionError}
+      if recent !== null
+        .bdt-toolbar(role="status")
+          span #{recent.summary}
+          button.bdt-button(type="button" disabled={saving} onClick={undo}) Undo
       if compiled !== null && !compiled.ok
         .bdt-diagnostic
           p

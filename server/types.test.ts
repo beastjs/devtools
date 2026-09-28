@@ -9,7 +9,7 @@ import { planRefactor } from './refactor.ts'
 import { TypeResolver } from './types.ts'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
-const SETTINGS: AnalyzerSettings = { depthLimit: 2, minLines: 8, fileLines: 30 }
+const SETTINGS: AnalyzerSettings = { depthLimit: 2, minLines: 8, fileLines: 30, continuationMinProps: 5 }
 const octane = createOctaneCompiler({ root: ROOT, environment: 'client', hmr: false, dev: true })
 const resolver = new TypeResolver(ROOT, () => null)
 

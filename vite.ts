@@ -55,7 +55,7 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): Plugin {
       order: 'pre',
       handler(source, id) {
         const file = id.replace(/[?#].*$/u, '')
-        if (options.elementPicker === false || !isTaggable(file, PACKAGE_ROOT)) return null
+        if ((options.componentFinder ?? options.elementPicker) === false || !isTaggable(file, PACKAGE_ROOT)) return null
         const tagged = tagSource(source, file, toPosix(relative(root, file)))
         // Lines are unchanged, so no map is needed to keep Beast's diagnostics on the right line.
         return tagged === source ? null : { code: tagged, map: null }

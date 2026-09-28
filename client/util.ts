@@ -45,7 +45,7 @@ export function valueTone(value: unknown): string {
 // ---------------------------------------------------------------------------
 // Preferences, persisted per browser
 
-export type TabId = 'components' | 'inspector' | 'refactor'
+export type TabId = 'components' | 'inspector' | 'refactor' | 'elements'
 
 export interface Preferences {
   open: boolean

@@ -15,9 +15,11 @@ export interface BeastDevtoolsOptions {
   analyzer?: Partial<AnalyzerSettings>
   /**
    * Tag the DOM elements of project `.btsx` files with their component and
-   * source line, so the overlay's element picker can name them and open them
+   * source line, so the overlay's Component Finder can name them and open them
    * in your editor. Default: `true`.
    */
+  componentFinder?: boolean
+  /** @deprecated Use componentFinder. This legacy option controls source tagging, not Element Picker. */
   elementPicker?: boolean
 }
 
@@ -114,7 +116,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           const location = url.searchParams.get('file')
           if (location === null || location === '') return send(400, { error: 'Missing file.' })
           res.statusCode = 307
-          // The element picker sends project-relative locations; absolute ones pass through.
+          // Component Finder sends project-relative locations; absolute ones pass through.
           res.setHeader('Location', editorUrl(resolve(root, location)))
           return res.end()
         }
@@ -175,6 +177,12 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           settings: readSettings((name) => (body.settings as Record<string, unknown> | undefined)?.[name], defaults),
         }
         return send(200, selected.project.apply(request))
+      }
+      if (url.pathname === '/continue-props') {
+        return send(200, selected.project.continueProps({
+          path: String(body.path ?? ''), hash: String(body.hash ?? ''),
+          line: Number(body.line), dryRun: body.dryRun !== false,
+        }))
       }
       if (url.pathname === '/undo') return send(200, selected.project.undo(String(body.id ?? '')))
       return send(404, { error: `Unknown endpoint ${url.pathname}` })
@@ -244,6 +252,7 @@ function readSettings(get: (name: string) => unknown, defaults: AnalyzerSettings
     depthLimit: read('depthLimit', 1, 20),
     minLines: read('minLines', 2, 200),
     fileLines: read('fileLines', 2, 1000),
+    continuationMinProps: read('continuationMinProps', 1, 1000),
   }
 }
 

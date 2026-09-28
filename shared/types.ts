@@ -17,9 +17,11 @@ export interface AnalyzerSettings {
   minLines: number
   /** Sections at least this long are extracted into their own `.btsx` file by default. */
   fileLines: number
+  /** Minimum inline prop count for automatic continuation suggestions. */
+  continuationMinProps: number
 }
 
-export const DEFAULT_SETTINGS: AnalyzerSettings = { depthLimit: 5, minLines: 8, fileLines: 30 }
+export const DEFAULT_SETTINGS: AnalyzerSettings = { depthLimit: 5, minLines: 8, fileLines: 30, continuationMinProps: 5 }
 
 export type Severity = 'info' | 'warning' | 'critical'
 
@@ -35,7 +37,7 @@ export interface SuggestedProp {
 
 export interface RefactorSuggestion extends LineRange {
   id: string
-  kind: 'extract' | 'duplicate' | 'map'
+  kind: 'extract' | 'duplicate' | 'map' | 'continuation'
   severity: Severity
   /** Component (default or local `component`) the section currently lives in. */
   host: string
@@ -195,7 +197,16 @@ export interface ProjectReport {
   entryComponents: string[]
 }
 
+export interface ContinuationRequest {
+  path: string
+  hash: string
+  line: number
+  dryRun: boolean
+}
+
 export interface FileReport {
+  /** Element and component headers whose inline props can be continued. */
+  continuationLines: number[]
   path: string
   absolutePath: string
   /** Content hash; refactors are refused when the file changed since it was analyzed. */
