@@ -467,7 +467,8 @@ requests from your own page.
 │   ├── diff.ts, line-map.ts         # Diff previews and source-map line links
 │   └── source-tags*.ts              # Component Finder tagging and Rspack loader
 ├── client/                          # The overlay, shipped as BTSX source
-│   ├── BeastDevtools.btsx           # Shell: dock, launcher, tabs
+│   ├── BeastDevtools.btsx           # Shell: dock, launcher, panel switching
+│   ├── Topbar.btsx, Icons.btsx      # Top bar with tabs and tool buttons; shared icons
 │   ├── *Panel.btsx                  # Components, BTSX → TSRX, Refactor
 │   ├── element-tools.ts, layout.ts  # Component Finder, Element Picker and resizable panes
 │   ├── runtime.ts, api.ts           # Octane hook store and API client

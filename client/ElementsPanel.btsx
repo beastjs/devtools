@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'octane'
+import { groupAttributes, groupProperties, groupStyles, type ElementSection } from './element-groups.ts'
 import { COMMON_STYLES, type ElementInspection, type ElementProperty, type ElementPropertyGroup } from './element-inspector.ts'
 import { cx } from './util.ts'
 
@@ -29,9 +30,22 @@ component ElementPropertyRow
       setEditing(false);
       if (draft !== property.value) onCommit(property.name, draft);
     };
+    const on = property.value === 'true';
   .bdt-element-property
     label.bdt-element-property-name(title={property.name}) #{property.name}
-    if property.editable
+    if property.type === 'boolean'
+      button(
+        ~ type="button"
+        ~ role="switch"
+        ~ className={cx('bdt-switch', on && 'is-on')}
+        ~ aria-checked={on}
+        ~ aria-label={property.name}
+        ~ title={property.editable ? `Set ${property.name} to ${!on}` : `${property.name} is read-only`}
+        ~ disabled={disabled || !property.editable}
+        ~ onClick={() => onCommit(property.name, on ? 'false' : 'true')}
+        ~ )
+        span.bdt-switch-thumb
+    elseif property.editable
       input.bdt-input.bdt-element-property-value(
         ~ aria-label={property.name}
         ~ value={draft}
@@ -48,8 +62,6 @@ component ElementPropertyRow
       button.bdt-icon-button(type="button" disabled={disabled} title={`Remove ${property.name}`} aria-label={`Remove ${property.name}`} onClick={() => onCommit(property.name, null)}) ×
     elseif property.inline
       span.bdt-element-inline(title="Inline override") edited
-    else
-      span.bdt-element-inline #{property.editable ? '' : 'read-only'}
 
 props { inspection, onPick }: ElementsPanelProps
 setup
@@ -101,6 +113,11 @@ setup
     if (search) return entry.name.toLowerCase().includes(search) || entry.value.toLowerCase().includes(search);
     return group !== 'styles' || showAll || entry.inline || COMMON_STYLES.has(entry.name);
   });
+  const sections = group === 'styles' ? groupStyles(rows) : group === 'properties' ? groupProperties(rows) : groupAttributes(rows);
+  // Explicit open/closed choices per tab and section; a search shows every match.
+  const [folds, setFolds] = useState<Readonly<Record<string, boolean>>>({});
+  const isOpen = (section: ElementSection) => search !== '' || (folds[`${group}:${section.id}`] ?? !section.collapsed);
+  const toggle = (section: ElementSection) => setFolds({ ...folds, [`${group}:${section.id}`]: !isOpen(section) });
 
 section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
   if snapshot === null
@@ -142,8 +159,23 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
           .bdt-element-properties
             if rows.length === 0
               p.bdt-element-note No matching properties.
-            each property in rows key `${group}:${property.name}`
-              ElementPropertyRow(property={property} disabled={!snapshot.connected} removable={group === 'attributes' || (group === 'styles' && !!property.inline)} onCommit={edit})
+            each category in sections key `${group}:${category.id}`
+              .bdt-element-section
+                if category.label !== null
+                  button(
+                    ~ type="button"
+                    ~ className={cx('bdt-element-section-head', category.id === 'editable' && 'is-editable')}
+                    ~ aria-expanded={isOpen(category)}
+                    ~ disabled={search !== ''}
+                    ~ onClick={() => toggle(category)}
+                    ~ )
+                    span.bdt-element-section-chevron(aria-hidden="true") ›
+                    span #{category.label}
+                    span.bdt-dim #{category.properties.length}
+                if isOpen(category)
+                  div(className={cx('bdt-element-grid', category.columns === 2 && 'is-split')})
+                    each property in category.properties key `${group}:${property.name}`
+                      ElementPropertyRow(property={property} disabled={!snapshot.connected} removable={group === 'attributes' || (group === 'styles' && !!property.inline)} onCommit={edit})
           if group !== 'properties'
             form.bdt-element-add(onSubmit={add})
               input.bdt-input(aria-label={group === 'styles' ? 'New CSS property' : 'New attribute'} placeholder={group === 'styles' ? 'CSS property' : 'Attribute name'} value={newName} disabled={!snapshot.connected} onInput={(event) => setNewName(event.currentTarget.value)})
