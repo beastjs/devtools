@@ -110,7 +110,7 @@ export class BeastProject {
     return { root: this.#options.root, settings, files, components, entryComponents: entryNames }
   }
 
-  file(path: string, settings: AnalyzerSettings): FileReport | null {
+  file(path: string, settings: AnalyzerSettings, selectionLine?: number): FileReport | null {
     const absolutePath = this.resolve(path)
     if (absolutePath === null) return null
     const entry = this.#compile(absolutePath)
@@ -147,7 +147,7 @@ export class BeastProject {
         ...lineMap,
         diagnostics: diagnostics.map((diagnostic) => diagnosticInfo(diagnostic, entry.source)),
       },
-      analysis: analyzeDocument(ast, entry.source, componentNameFromPath(absolutePath), settings, this.#typed(absolutePath)),
+      analysis: analyzeDocument(ast, entry.source, componentNameFromPath(absolutePath), settings, { ...this.#typed(absolutePath), ...(selectionLine === undefined ? {} : { selectionLine }) }),
     }
   }
 
@@ -172,7 +172,10 @@ export class BeastProject {
       entry.source,
       componentNameFromPath(absolutePath),
       request.settings,
-      this.#typed(absolutePath),
+      {
+        ...this.#typed(absolutePath),
+        ...(/^manual:[1-9]\d*$/.test(request.suggestionId) ? { selectionLine: Number(request.suggestionId.slice(7)) } : {}),
+      },
     )
     const found = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
     if (found === undefined) throw new RefactorError('That suggestion no longer applies.', 409)

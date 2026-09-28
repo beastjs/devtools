@@ -9,7 +9,7 @@ import { planRefactor } from './refactor.ts'
 import { TypeResolver } from './types.ts'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
-const SETTINGS: AnalyzerSettings = { depthLimit: 5, minLines: 8, fileLines: 30 }
+const SETTINGS: AnalyzerSettings = { depthLimit: 2, minLines: 8, fileLines: 30 }
 const octane = createOctaneCompiler({ root: ROOT, environment: 'client', hmr: false, dev: true })
 const resolver = new TypeResolver(ROOT, () => null)
 
@@ -118,7 +118,7 @@ describe('derived prop types', () => {
       '            em #{tag}',
       '',
     ].join('\n'))
-    const { analysis } = analyzeFile(list, { depthLimit: 3, minLines: 4 })
+    const { analysis } = analyzeFile(list, { depthLimit: 2, minLines: 4 })
     const props = Object.fromEntries(analysis.suggestions[0]!.props.map((p) => [p.name, p.type]))
     expect(props).toEqual({ index: 'number', item: 'Item' })
   })

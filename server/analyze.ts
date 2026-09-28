@@ -86,6 +86,8 @@ interface Param {
 }
 
 export interface AnalyzeOptions {
+  /** Explicit block selection, independent of automatic depth and size thresholds. */
+  selectionLine?: number
   /** Absolute path of the source; type probes resolve relative imports from it. */
   sourcePath?: string
   /** Derives prop types with TypeScript; heuristic types are kept when absent or failing. */
@@ -182,13 +184,29 @@ export function analyzeDocument(
     info.available.forEach((_type, name) => context.words.add(name))
   }
   for (const name of [...context.moduleNames, ...context.moduleTypeNames, ...context.takenNames]) context.words.add(name)
-  const extractions = hosts.flatMap((host) => suggestExtractions(context, host))
-  const maps = suggestMaps(context, hosts)
-  // A run of repeated siblings is better rendered from an array than merged into a component.
-  const insideMap = (info: NodeInfo) => maps.some((map) => map.startLine <= info.start && info.end <= map.endLine)
-  const drafts = [...extractions, ...suggestDuplicates(context, hosts, insideMap), ...maps]
+  let drafts: Draft[]
+  if (options.selectionLine !== undefined) {
+    const selected = hosts.flatMap((host) => host.roots.flatMap(flatten)).find((info) =>
+      info.start === options.selectionLine && info.node.kind !== 'text' && info.node.kind !== 'style' &&
+      !(info.node.kind === 'element' && info.node.isComponent),
+    )
+    drafts = selected === undefined ? [] : [extractSuggestion(context, selected)]
+    for (const draft of drafts) {
+      draft.severity = 'info'
+      draft.reason = `Selected block, lines ${draft.startLine}–${draft.endLine}. Rename ${draft.name} if needed, then preview the extraction.`
+    }
+  } else {
+    const extractions = hosts.flatMap((host) => suggestExtractions(context, host))
+    const maps = suggestMaps(context, hosts)
+    // A run of repeated siblings is better rendered from an array than merged into a component.
+    const insideMap = (info: NodeInfo) => maps.some((map) => map.startLine <= info.start && info.end <= map.endLine)
+    drafts = [...extractions, ...suggestDuplicates(context, hosts, insideMap), ...maps]
+  }
   const typed = deriveTypes(context, document, drafts, options)
-  const suggestions = typed.map((suggestion, index) => ({ ...suggestion, id: `s${index + 1}` }))
+  const suggestions = typed.map((suggestion, index) => ({
+    ...suggestion,
+    id: options.selectionLine === undefined ? `s${index + 1}` : `manual:${options.selectionLine}`,
+  }))
 
   const components: ComponentMetrics[] = hosts.map((host) => {
     const all = host.roots.flatMap(flatten)
@@ -500,11 +518,14 @@ function suggestExtractions(context: Context, host: Host): Draft[] {
   const scan = (infos: readonly NodeInfo[], baseDepth: number, maxLines: number) => {
     for (const info of infos) {
       const relativeDepth = info.depth - baseDepth
-      if (relativeDepth + info.height <= depthLimit) continue
+      // Only descendants of this starting line count toward its nesting limit.
+      // Ancestor indentation must not turn a shallow section into an extraction.
+      if (info.height <= depthLimit) continue
       const lines = info.end - info.start + 1
       // A loop body is a natural component boundary at any size.
       const loopBody = info.parent?.node.kind === 'each'
-      if (info.node.kind === 'element' && relativeDepth >= 1 && lines >= minLines && (loopBody || lines <= maxLines)) {
+      // Existing component calls are already extracted; inspect their children instead.
+      if (info.node.kind === 'element' && !info.node.isComponent && relativeDepth >= 1 && lines >= minLines && (loopBody || lines <= maxLines)) {
         suggestions.push(extractSuggestion(context, info))
         if (info.height > depthLimit) scan(info.children, info.depth, Math.max(minLines, Math.floor(lines * 0.6)))
       } else {
@@ -520,7 +541,8 @@ function extractSuggestion(context: Context, info: NodeInfo): Draft {
   const { depthLimit } = context.settings
   const reach = info.depth + info.height
   const excess = reach - depthLimit
-  const name = uniqueName(context, suggestName(context, info))
+  const element = firstElement(info)
+  const name = uniqueName(context, element === null ? `${info.host.name}Block` : suggestName(context, element, info))
   const props = propsFor([info])
   const lines = info.end - info.start + 1
   const severity: Severity = excess >= 3 ? 'critical' : 'warning'
@@ -532,7 +554,7 @@ function extractSuggestion(context: Context, info: NodeInfo): Draft {
     name,
     label: labelOf(info.node),
     reason:
-      `${lines} lines${where} reach depth ${reach} (limit ${depthLimit}). ` +
+      `${lines} lines${where} nest ${info.height} levels below this section (limit ${depthLimit}), reaching component depth ${reach}. ` +
       `Extracted as ${name}, its deepest line drops to depth ${info.height}` +
       (props.length === 0 ? ' and it needs no props.' : ` and it needs ${props.length} prop${props.length === 1 ? '' : 's'}.`),
     startLine: info.start,

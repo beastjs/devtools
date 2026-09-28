@@ -1,8 +1,10 @@
-import { existsSync, watch, type FSWatcher } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { existsSync, realpathSync, statSync, watch, type FSWatcher } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { dirname, extname, relative, resolve, sep } from 'node:path'
+import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_SETTINGS, SOURCE_CHANGED_EVENT, type AnalyzerSettings, type ApplyRequest } from '../shared/types.js'
+import { createFolderBrowser } from './folder-browser.js'
 import { BeastProject } from './project.js'
 import { RefactorError } from './refactor.js'
 
@@ -57,6 +59,8 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
   const include = options.include ?? ['src']
   const defaults: AnalyzerSettings = { ...DEFAULT_SETTINGS, ...options.analyzer }
   const project = new BeastProject({ root, include, exclude: [PACKAGE_ROOT], ...(options.entries === undefined ? {} : { entries: options.entries }) })
+  const projects = new Map<string, { root: string; project: BeastProject }>()
+  const browseFolder = createFolderBrowser()
   const clients = new Set<ServerResponse>()
   const watchers: FSWatcher[] = []
   const pending = new Set<string>()
@@ -101,6 +105,9 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
     }
 
     try {
+      const projectId = url.searchParams.get('project') ?? ''
+      const selected = projectId === '' ? { root, project } : projects.get(projectId)
+      if (selected === undefined) return send(404, { error: 'Project is no longer open. Open the folder again.' })
       if (req.method === 'GET') {
         if (url.pathname === '/events') return events(req, res)
         if (url.pathname === '/open-in-editor') {
@@ -112,9 +119,11 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           return res.end()
         }
         const settings = readSettings((name) => url.searchParams.get(name), defaults)
-        if (url.pathname === '/project') return send(200, project.report(settings))
+        if (url.pathname === '/project') return send(200, selected.project.report(settings))
         if (url.pathname === '/file') {
-          const report = project.file(url.searchParams.get('path') ?? '', settings)
+          const line = url.searchParams.get('line')
+          if (line !== null && (!Number.isSafeInteger(Number(line)) || Number(line) < 1)) return send(422, { error: 'Choose a valid starting line.' })
+          const report = selected.project.file(url.searchParams.get('path') ?? '', settings, line === null ? undefined : Number(line))
           return report === null ? send(404, { error: 'Unknown .btsx file' }) : send(200, report)
         }
         return send(404, { error: `Unknown endpoint ${url.pathname}` })
@@ -125,6 +134,36 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
       const refusal = writeRefusal(req)
       if (refusal !== null) return send(403, { error: refusal })
       const body = await readJson(req)
+      if (url.pathname === '/browse-project') return send(200, { path: await browseFolder() })
+      if (url.pathname === '/open-project') {
+        if (typeof body.path !== 'string' || !isAbsolute(body.path.trim())) {
+          return send(422, { error: 'Enter an absolute project folder path.' })
+        }
+        let folder: string
+        try {
+          folder = realpathSync(body.path.trim())
+          if (!statSync(folder).isDirectory()) throw new Error('Not a directory')
+        } catch {
+          return send(422, { error: 'That folder does not exist or cannot be read.' })
+        }
+        if (folder === root) return send(200, { id: '', root })
+        for (const [id, entry] of projects) {
+          if (entry.root === folder) return send(200, { id, root: folder })
+        }
+        if (projects.size >= 20) return send(422, { error: 'Too many open projects. Restart the dev server to open more.' })
+        const id = randomUUID()
+        const opened = new BeastProject({ root: folder, include: ['.'], exclude: [PACKAGE_ROOT] })
+        const watcher = watch(folder, { recursive: true }, (_event, name) => {
+          if (name === null || !name.endsWith('.btsx') || name.split(sep).includes('node_modules')) return
+          opened.invalidate(resolve(folder, name))
+          pending.add(toPosix(name))
+          timer ??= setTimeout(flush, NOTIFY_DELAY_MS)
+        })
+        watcher.on('error', () => watcher.close())
+        watchers.push(watcher)
+        projects.set(id, { root: folder, project: opened })
+        return send(200, { id, root: folder })
+      }
       if (url.pathname === '/apply') {
         const request: ApplyRequest = {
           path: String(body.path ?? ''),
@@ -135,9 +174,9 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           dryRun: body.dryRun !== false,
           settings: readSettings((name) => (body.settings as Record<string, unknown> | undefined)?.[name], defaults),
         }
-        return send(200, project.apply(request))
+        return send(200, selected.project.apply(request))
       }
-      if (url.pathname === '/undo') return send(200, project.undo(String(body.id ?? '')))
+      if (url.pathname === '/undo') return send(200, selected.project.undo(String(body.id ?? '')))
       return send(404, { error: `Unknown endpoint ${url.pathname}` })
     } catch (error) {
       if (error instanceof RefactorError) return send(error.status, { error: error.message })
@@ -167,6 +206,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
       for (const watcher of watchers.splice(0)) watcher.close()
       for (const client of clients) client.end()
       clients.clear()
+      projects.clear()
       if (timer !== null) clearTimeout(timer)
       timer = null
       pending.clear()
