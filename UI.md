@@ -1,4 +1,4 @@
-The icons and launcher markup are in [client/BeastDevtools.btsx](client/BeastDevtools.btsx), with styles in [client/devtools.css](client/devtools.css).
+The launcher markup is in [client/BeastDevtools.btsx](client/BeastDevtools.btsx), the panel's top bar in [client/Topbar.btsx](client/Topbar.btsx), and the icons both share in [client/Icons.btsx](client/Icons.btsx). Styles are in [client/devtools.css](client/devtools.css).
 
 **Tools**
 

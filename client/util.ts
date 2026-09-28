@@ -47,6 +47,13 @@ export function valueTone(value: unknown): string {
 
 export type TabId = 'components' | 'inspector' | 'refactor' | 'elements'
 
+export const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
+  { id: 'inspector', label: 'BTSX → TSRX' },
+  { id: 'components', label: 'Components' },
+  { id: 'elements', label: 'Elements' },
+  { id: 'refactor', label: 'Refactor' },
+]
+
 export interface Preferences {
   open: boolean
   tab: TabId
