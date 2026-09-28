@@ -34,6 +34,6 @@ nav.bdt-sidebar(aria-label="Beast source files")
         elseif file.suggestions > 0
           span.bdt-badge.is-warn(title="Refactor suggestions") #{file.suggestions}
         else
-          span.bdt-badge.is-ok(title={`Max depth ${file.maxDepth}`}) ok
+          span.bdt-badge.is-ok(title={`Max depth ${file.maxDepth}`}) OK
     div.infinite-lines
   Splitter(split="sidebar" edge="end" label="Resize file list")

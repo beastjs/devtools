@@ -29,7 +29,7 @@ module
   }
 
 component BeastLogo
-  svg.bdt-logo(viewBox="0 0 24 24" fill="none" aria-hidden="true")
+  svg.bdt-logo(viewBox="0 0 24 24" fill="none" aria-hidden="true" width='20' height='20')
     path(fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d={LOGO_PATH})
 
 component PickIcon
@@ -188,7 +188,7 @@ if open || docked
     header.bdt-topbar
       .bdt-brand
         BeastLogo
-        div(className="skew-4") Beast
+        div(className="skew-2 font-semibold! text-text text-base!") Beast
         span.bdt-brand-sub DevTools
       nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels" className="has[:focus]:rounded-sm! rounded-full")
         each item in TABS key item.id

@@ -1,8 +1,28 @@
 /*
  * Beast DevTools overlay. Every selector is prefixed with `bdt-` and the root
-
  * app's Tailwind preflight or global element styles.
  */
+@font-face {
+  font-family: 'IOS';
+  src: url('../assets/fonts/IoskeleyMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: fallback;
+}
+@font-face {
+  font-family: 'OKX';
+  src: url('../assets/fonts/okxs-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: fallback;
+}
+@font-face {
+  font-family: 'OKX';
+  src: url('../assets/fonts/okxs-medium.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: fallback;
+}
 
 .bdt-root {
   --bdt-bg: #121312;
@@ -10,13 +30,15 @@
   --bdt-bg-3: #202020;
   --bdt-bg-4: #2a2a2a;
   --bdt-line: rgba(255, 255, 255, 0.07);
+  --bdt-lime: oklch(0.857 0.118 130.81);
   --bdt-line-2: rgba(255, 255, 255, 0.13);
-  --bdt-text: #f2f2ee;
+  --bdt-text: oklch(0.954 0.01 125.68);
   --bdt-muted: #a4a5a0;
   --bdt-dim: #8b8b8b;
+  --bdt-trl: oklch(0.783 0.015 142.21);
   --bdt-accent: #ff415a;
   --bdt-accent-soft: rgba(255, 65, 90, 0.14);
-  --bdt-ok: #5fd39a;
+  --bdt-ok: oklch(0.681 0.113 159.68);
   --bdt-warn: #ffb86b;
   --bdt-bad: #ff5d6c;
   --bdt-info: #7cb7ff;
@@ -24,11 +46,11 @@
   --bdt-active: oklch(0.6278 0.204 254.62);
   --bdt-active-soft: oklch(0.6278 0.204 254.62);
   --color-active-soft: oklch(0.6278 0.204 254.62);
-  --bdt-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --bdt-mono: IOS, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   /* Long, soft landing for things arriving; a quicker, accelerating exit. */
   --bdt-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --bdt-ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
-  --bdt-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bdt-sans: OKX, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   position: fixed;
   z-index: 2147483000;
@@ -256,15 +278,15 @@
 .bdt-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
   white-space: nowrap;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.2px;
 }
 
 .bdt-brand-sub {
-  color: var(--bdt-dim);
-  font-weight: 500;
+  color: var(--bdt-trel);
+  font-weight: 600;
 }
 
 .bdt-tabs {
@@ -290,7 +312,7 @@
   color: var(--bdt-muted);
   font-weight: 600;
   white-space: nowrap;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.15px;
 }
 
 .bdt-tab:hover {
@@ -305,7 +327,7 @@
 
 .bdt-tab-count {
   min-width: 18px;
-  padding: 0 5px;
+  padding: 0 3px;
   border-radius: 999px;
   /*background: var(--bdt-accent-soft);*/
   color: var(--bdt-warn);
@@ -564,7 +586,7 @@ html.bdt-resizing * {
   align-items: center;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: 5px;
   border: 0.33px solid var(--bdt-line-2);
   color: var(--bdt-muted);
   font-size: 10px;
@@ -579,7 +601,7 @@ html.bdt-resizing * {
 }
 
 .bdt-badge.is-ok {
-  border-color: rgba(95, 211, 154, 0.35);
+  border-color: var(--bdt-line-2);
   color: var(--bdt-ok);
 }
 
@@ -664,8 +686,9 @@ html.bdt-resizing * {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 12px;
+  padding: 6px 6px 6px 12px;
   color: var(--bdt-muted);
+  border-radius: 0 4px 4px 0;
   text-align: left;
 }
 
@@ -677,7 +700,7 @@ html.bdt-resizing * {
 .bdt-file.is-active {
   background: var(--bdt-bg-4);
   color: var(--bdt-text);
-  box-shadow: inset 2px 0 0 var(--bdt-accent);
+  box-shadow: inset 1.5px 0 0 var(--bdt-warn);
 }
 
 .bdt-file-name {
@@ -1105,7 +1128,7 @@ html.bdt-resizing * {
   user-select: none;
   background: var(--bdt-bg);
   cursor: pointer;
-  opacity: 0.5;
+  opacity: 0.95;
 }
 
 .bdt-line.is-linked .bdt-ln,
@@ -1116,7 +1139,7 @@ html.bdt-resizing * {
 
 .bdt-depth {
   position: sticky;
-  left: 46px;
+  left: 36px;
   display: flex;
   align-items: center;
   width: 64px;
@@ -1216,6 +1239,7 @@ html.bdt-resizing * {
   border-bottom: 1px solid var(--bdt-line);
   background: var(--bdt-bg-4);
   color: var(--bdt-muted);
+  letter-spacing: 0.012em;
   font-size: 11px;
   font-weight: 600;
   flex: none;
@@ -1241,7 +1265,7 @@ html.bdt-resizing * {
   flex-wrap: wrap;
   align-items: stretch;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--bdt-line);
 }
 
@@ -1250,30 +1274,33 @@ html.bdt-resizing * {
   gap: 2px;
   min-width: 78px;
   padding: 6px 10px;
-  border: 0.33px solid var(--bdt-line);
-  border-radius: 6px;
+  border: 0.33px solid var(--bdt-bg-2);
+  border-radius: 4px;
   background: var(--bdt-bg-2);
+  color: oklch(0.783 0.015 142.21);
 }
 
 .bdt-metric-value {
-  font-family: var(--bdt-mono);
+  font-family: var(--bdt-sans);
   font-size: 15px;
   font-weight: 600;
 }
 
 .bdt-metric-value.is-over {
-  color: var(--bdt-bad);
+  color: oklch(0.604 0.164 18.06);
 }
 
 .bdt-metric-label {
   color: var(--bdt-dim);
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
+  font-family: var(--bdt-sans);
   text-transform: uppercase;
-  letter-spacing: -0.03em;
+  letter-spacing: 0.012em;
 }
 .metric-alert {
-  background: var(--bdt-bg-4);
+  background: var(--bdt-bg-3);
+  border: 0.33px solid var(--bdt-bg-4);
 }
 
 .bdt-histogram {
@@ -1282,13 +1309,14 @@ html.bdt-resizing * {
   gap: 3px;
   height: 54px;
   padding: 6px 10px 0;
-  border: 0.33px solid var(--bdt-line);
-  border-radius: 6px;
+  border: 0.33px solid var(--bdt-bg);
+  border-radius: 4px;
   background: var(--bdt-bg-2);
 }
 
 .bdt-histogram:hover {
   background: var(--bdt-bg-4);
+  border: 0.33px solid var(--bdt-line);
   cursor: pointer;
 }
 
@@ -1380,8 +1408,9 @@ html.bdt-resizing * {
 .bdt-severity {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
   flex: none;
+  border-radius: 4px;
+  margin: 0 0 5px 0;
   background: var(--bdt-info);
 }
 
@@ -1568,7 +1597,7 @@ html.bdt-resizing * {
 }
 
 .bdt-diff {
-  max-height: 240px;
+  /*max-height: 240px;*/
   overflow: auto;
   border: 1px solid var(--bdt-line);
   border-radius: 7px;
@@ -1611,7 +1640,7 @@ html.bdt-resizing * {
 /* Editable suggestion name */
 
 .bdt-card-title-input {
-  padding: 0 0 1px;
+  padding: 0 0px 5px 3px;
   border-bottom: 1px dashed transparent;
   background: transparent;
   cursor: text;
