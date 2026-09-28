@@ -173,20 +173,29 @@ own controls keep working.
 
 ### Element Picker
 
-Click the ruler button in the launcher or panel toolbar, or press
-<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. Hover a page element to see its
-HTML/SVG tag (and `type` attribute when present), ID, rendered height × width
-in pixels, and computed padding and margin for top / right / bottom / left.
-The detail card appears after 200 ms without pointer movement and is placed
-outside the element. If no side has enough room in the viewport, only the
-outline is shown. Elements without an ID show **—**. Dimensions use the element's bounding
-rectangle, including borders and CSS transforms.
+Click the ruler button in the launcher or toolbar, or press
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. Hover an element for a compact
+preview of its tag, ID and dimensions. Click it to open **Elements** in DevTools.
 
-This mode works without source tags or the Octane runtime inspection hook.
-Only one of Component Finder and Element Picker is active at a time. App clicks are suppressed while
-inspecting; the DevTools controls remain usable. Press <kbd>Esc</kbd> or toggle
-the ruler button to exit. Elements inside iframes and closed shadow roots
-are inspected at their containing element.
+- **Styles** shows common layout and appearance properties. Enable **All computed
+  styles** or search to inspect the full computed list. Editing a value creates
+  an inline override; remove it to return to the stylesheet value.
+- **Attributes** shows every attribute and lets you edit, add or remove values.
+- **DOM properties** includes inherited properties and runtime values such as
+  `value`, `checked` and `disabled`. Editable primitive values can be changed;
+  browser-owned objects and methods are displayed as read-only summaries.
+
+Press Enter or leave a value field to apply it. **Undo** reverses each edit and
+remains available when switching panels or reselecting the same element.
+These are live page edits only: they do not modify BTSX files, and reloading or
+an app rerender can replace them. Removed elements are marked as disconnected;
+use **Pick another** to select their replacement.
+
+The preview appears after 200 ms without pointer movement and sits outside the
+element. Element Picker works on HTML and SVG without source tags or a runtime
+connection. Escape cancels picking. Only one tool is active at a time, and
+selection clicks are consumed so they do not activate the underlying app.
+Elements inside iframes and closed shadow roots are inspected at their container.
 
 ### Components
 

@@ -7,6 +7,7 @@
  * server adds to project `.btsx` elements (see `server/source-tags.ts`). The
  * highlight is plain DOM, so moving the pointer never re-renders the overlay.
  */
+import { elementLabel } from './element-inspector.ts'
 import { placeElementPickerCard } from './element-picker-position.ts'
 import { COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
 
@@ -29,12 +30,12 @@ export function startComponentFinder(onComponentFound: (source: ComponentFinderS
 }
 
 /** Show basic element properties; returns cleanup. */
-export function startElementPicker(onCancel: () => void): () => void {
-  return startElementTool(() => {}, onCancel, 'element-picker')
+export function startElementPicker(onElementPicked: (element: Element) => void, onCancel: () => void): () => void {
+  return startElementTool(() => {}, onCancel, 'element-picker', onElementPicked)
 }
 
 /** Shared pointer tracking and highlighting for both tools. */
-function startElementTool(onComponentFound: (source: ComponentFinderSource) => void, onCancel: () => void, mode: ElementTool): () => void {
+function startElementTool(onComponentFound: (source: ComponentFinderSource) => void, onCancel: () => void, mode: ElementTool, onElementPicked?: (element: Element) => void): () => void {
   const activeToolClass = `bdt-${mode}-active`
   const box = document.createElement('div')
   box.className = `bdt-${mode}-highlight`
@@ -43,19 +44,10 @@ function startElementTool(onComponentFound: (source: ComponentFinderSource) => v
   const name = document.createElement('strong')
   const where = document.createElement('span')
   label.append(name, where)
-  const details = document.createElement('dl')
-  const values = new Map<string, HTMLElement>()
   if (mode === 'element-picker') {
-    for (const title of ['Type', 'ID', 'H × W', 'Padding', 'Margin']) {
-      const term = document.createElement('dt')
-      term.textContent = title
-      const value = document.createElement('dd')
-      details.append(term, value)
-      values.set(title, value)
-    }
     const hint = document.createElement('small')
-    hint.textContent = 'Spacing: top / right / bottom / left · Esc to exit'
-    label.append(details, hint)
+    hint.textContent = 'Click to edit · Esc to exit'
+    label.append(hint)
   }
   document.body.append(box, label)
   document.documentElement.classList.add(activeToolClass)
@@ -87,14 +79,8 @@ function startElementTool(onComponentFound: (source: ComponentFinderSource) => v
     box.style.borderRadius = cappedRadius(style.borderRadius, Math.min(rect.width, rect.height) / 2)
 
     if (mode === 'element-picker') {
-      name.textContent = 'Element Picker'
-      where.textContent = source === null ? '' : source.component
-      const type = element.getAttribute('type')
-      values.get('Type')!.textContent = type ? `${element.localName} (${type})` : element.localName
-      values.get('ID')!.textContent = element.id || '—'
-      values.get('H × W')!.textContent = `${Number(rect.height.toFixed(2))} × ${Number(rect.width.toFixed(2))} px`
-      values.get('Padding')!.textContent = [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].join(' / ')
-      values.get('Margin')!.textContent = [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft].join(' / ')
+      name.textContent = elementLabel(element)
+      where.textContent = `${Number(rect.width.toFixed(1))} × ${Number(rect.height.toFixed(1))}`
     } else if (source !== null) {
       name.textContent = source.component
       where.textContent = `${source.path}:${source.line}`
@@ -153,8 +139,11 @@ function startElementTool(onComponentFound: (source: ComponentFinderSource) => v
   const onClick = (event: MouseEvent) => {
     if (event.composedPath().some(inOverlay)) return
     onPress(event)
-    if (mode === 'element-picker') return
     const element = targetElement(event)
+    if (mode === 'element-picker') {
+      if (element !== null) onElementPicked?.(element)
+      return
+    }
     const source = element === null ? null : readComponentSource(element)
     if (source !== null) onComponentFound(source)
   }

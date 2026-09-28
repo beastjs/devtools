@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'octane'
 import type { AnalyzerSettings, FileReport, ProjectReport } from '../shared/types.ts'
 import ProjectPicker from './ProjectPicker.btsx'
 import ComponentsPanel from './ComponentsPanel.btsx'
+import ElementsPanel from './ElementsPanel.btsx'
+import { ElementInspection } from './element-inspector.ts'
 import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
 import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
@@ -14,6 +16,7 @@ module
   const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
     { id: 'inspector', label: 'BTSX → TSRX' },
     { id: 'components', label: 'Components' },
+    { id: 'elements', label: 'Elements' },
     { id: 'refactor', label: 'Refactor' },
   ]
   const LOGO_PATH = 'm12.01.001c.002.002.152.006.333.01 1.672.036 3.366.451 4.905 1.204a12.06 12.06 0 0 1 6.141 7.002c.375 1.124.581 2.305.608 3.48a11.9 11.9 0 0 1-1.027 5.183c-.108.245-.355.736-.5.993a12.1 12.1 0 0 1-3.417 3.843c-.203.15-.666.456-.886.588a11.95 11.95 0 0 1-5.648 1.7c-.114.008-.978.008-1.028.001a12 12 0 0 1-1.675-.189 12.03 12.03 0 0 1-7.211-4.336 12.3 12.3 0 0 1-1.582-2.6c-.58-1.314-.89-2.565-1.008-4.065-.02-.255-.02-1.343 0-1.613.122-1.632.512-3.076 1.212-4.49a12 12 0 0 1 1.828-2.708c.19-.214.726-.75.936-.937A12 12 0 0 1 8.228.608a12 12 0 0 1 3.036-.585 10 10 0 0 1 .369-.011 10 10 0 0 0 .377-.011m1.768 4.219a9 9 0 0 0-1.31-.186c-.22-.011-.852-.006-1.056.01a8 8 0 0 0-2.938.79l-.077.039 1.8 1.8 1.8 1.799 1.799-1.8 1.8-1.8-.077-.038a8 8 0 0 0-1.74-.614m6.208 7.351a8 8 0 0 0-.777-3.006l-.075-.157-1.8 1.8-1.8 1.8 1.799 1.8 1.8 1.8.038-.077a7.9 7.9 0 0 0 .802-2.92c.021-.252.028-.81.013-1.04M8.46 12.01l-1.8-1.8-1.799-1.8-.048.097a8.1 8.1 0 0 0-.806 3.078c-.03.564.01 1.21.11 1.793.127.73.389 1.53.705 2.154l.04.077 1.799-1.8zm7.138 7.137L13.8 17.35c-.99-.989-1.8-1.798-1.804-1.798-.003 0-.814.81-1.803 1.798l-1.797 1.797.156.075c.835.4 1.727.645 2.706.742a12 12 0 0 0 1.235.017 8 8 0 0 0 2.947-.759z'
@@ -152,6 +155,8 @@ setup
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentRefactor | null>(null);
+  const elementInspections = useRef(new WeakMap<Element, ElementInspection>());
+  const [elementInspection, setElementInspection] = useState<ElementInspection | null>(null);
   const [activeElementTool, setActiveElementTool] = useState<ElementTool | null>(null);
   const componentFinderActive = activeElementTool === 'component-finder';
   const elementPickerActive = activeElementTool === 'element-picker';
@@ -203,10 +208,20 @@ setup
     if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
   };
 
-  // Component Finder ends on selection; Element Picker stays active until toggled or Escape.
+  // Both tools end on selection; Element Picker opens the live editor.
   useEffect(() => {
     if (activeElementTool === null) return;
-    if (activeElementTool === 'element-picker') return startElementPicker(() => setActiveElementTool(null));
+    if (activeElementTool === 'element-picker') return startElementPicker(
+      (element) => {
+        const inspection = elementInspections.current.get(element) ?? new ElementInspection(element);
+        elementInspections.current.set(element, inspection);
+        setElementInspection(inspection);
+        setActiveElementTool(null);
+        setTab('elements');
+        setOpen(true);
+      },
+      () => setActiveElementTool(null),
+    );
     return startComponentFinder(
       (source) => {
         setActiveElementTool(null);
@@ -307,6 +322,8 @@ if open || docked
             ~ onViewSource={viewSource}
             ~ onAnalyze={analyze}
             ~ )
+        case 'elements'
+          ElementsPanel(inspection={elementInspection} onPick={() => setActiveElementTool('element-picker')})
         case 'inspector'
           InspectorPanel(
             ~ key={projectId}
