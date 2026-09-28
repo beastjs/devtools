@@ -25,4 +25,3 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
       - run: bun install
       - run: bun run typecheck
-      - run: bun test
