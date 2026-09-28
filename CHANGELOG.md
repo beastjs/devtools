@@ -6,6 +6,12 @@ All notable changes to `@beastjs/devtools` are recorded here.
 
 ### Added
 
+- **Grouped Elements panel**: DOM properties you can edit, such as
+  `textContent`, `id` and `className`, are listed first. Styles and read-only
+  properties are grouped by category in a two-column grid. Click a heading to
+  fold its group. Methods, event handlers and constants start folded. Boolean
+  properties are switches. More properties are editable, including `lang`,
+  `href`, `src` and `draggable`.
 - **Block view for components**: a new default view of the Components tree
   that stacks one-line blocks with a depth stripe and capped indentation, and
   starts at the app's entry component (read from `main.ts`, or your bundler's

@@ -20,7 +20,13 @@ export interface ElementSnapshot {
   properties: ElementProperty[]
 }
 
-const EDITABLE_PROPERTIES = new Set(['value', 'checked', 'selected', 'disabled', 'hidden', 'readOnly', 'required', 'multiple', 'tabIndex', 'title', 'id', 'className', 'placeholder', 'textContent'])
+const EDITABLE_PROPERTIES = new Set([
+  'value', 'checked', 'selected', 'disabled', 'hidden', 'readOnly', 'required', 'multiple', 'tabIndex', 'title', 'id', 'className', 'placeholder', 'textContent',
+  'innerText', 'lang', 'dir', 'draggable', 'spellcheck', 'contentEditable', 'inert', 'autofocus', 'translate', 'accessKey', 'open', 'indeterminate',
+  'name', 'type', 'href', 'src', 'alt', 'min', 'max', 'step', 'pattern', 'maxLength', 'minLength',
+])
+// Replacing these drops element children, so only offer them on text-only elements.
+const TEXT_PROPERTIES = new Set(['textContent', 'innerText'])
 const PROTECTED_ATTRIBUTES = new Set([SOURCE_ATTRIBUTE, COMPONENT_ATTRIBUTE])
 export const COMMON_STYLES = new Set(['display', 'position', 'width', 'height', 'min-width', 'max-width', 'min-height', 'max-height', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'gap', 'align-items', 'justify-content', 'color', 'background-color', 'font-size', 'font-weight', 'line-height', 'border-radius', 'border-width', 'border-color', 'opacity', 'overflow', 'box-shadow'])
 
@@ -57,18 +63,25 @@ export function captureElement(element: Element): ElementSnapshot {
   if (style) for (const name of Array.from(style)) {
     if (!styles.some((entry) => entry.name === name)) styles.push({ name, value: `${style.getPropertyValue(name)}${style.getPropertyPriority(name) ? ' !important' : ''}`, editable: true, inline: true })
   }
-  const names = new Set<string>()
+  // The nearest descriptor wins, so a read-only getter (e.g. `select.type`) is not offered.
+  const descriptors = new Map<string, PropertyDescriptor>()
   for (let object: object | null = element; object && object !== Object.prototype; object = Object.getPrototypeOf(object)) {
-    for (const name of Object.getOwnPropertyNames(object)) names.add(name)
+    for (const name of Object.getOwnPropertyNames(object)) {
+      const descriptor = descriptors.has(name) ? undefined : Object.getOwnPropertyDescriptor(object, name)
+      if (descriptor) descriptors.set(name, descriptor)
+    }
   }
-  const properties: ElementProperty[] = [...names].sort().map((name) => {
+  const textOnly = Array.from(element.childNodes).every((node) => node.nodeType === 3)
+  const properties: ElementProperty[] = [...descriptors.keys()].sort().map((name) => {
     try {
       const value = Reflect.get(element, name)
       const type = typeof value
       const primitive = type === 'string' || type === 'number' || type === 'boolean'
+      const descriptor = descriptors.get(name)!
+      const writable = descriptor.set !== undefined || descriptor.writable === true
       return {
         name, value: displayValue(value),
-        editable: primitive && EDITABLE_PROPERTIES.has(name) && (name !== 'textContent' || element.childNodes.length === 0 || Array.from(element.childNodes).every((node) => node.nodeType === 3)),
+        editable: primitive && writable && EDITABLE_PROPERTIES.has(name) && (!TEXT_PROPERTIES.has(name) || textOnly),
         ...(primitive ? { type: type as 'string' | 'number' | 'boolean' } : {}),
       }
     } catch { return { name, value: '[Unavailable]', editable: false } }

@@ -5,7 +5,7 @@ The icons and launcher markup are in [client/BeastDevtools.btsx](client/BeastDev
 - **Component Finder** identifies the component that owns an element and its source file. Click to open the source in your editor. Shortcut: Alt+Shift+C.
 - **Element Picker** shows a compact tag/ID and dimensions preview. Clicking opens the Elements panel for live style, attribute and DOM-property edits with undo. Shortcut: Alt+Shift+E.
 
-[client/ElementsPanel.btsx](client/ElementsPanel.btsx) contains the live editor; [client/element-inspector.ts](client/element-inspector.ts) captures properties and manages edits and undo.
+[client/ElementsPanel.btsx](client/ElementsPanel.btsx) contains the live editor; [client/element-inspector.ts](client/element-inspector.ts) captures properties and manages edits and undo. [client/element-groups.ts](client/element-groups.ts) sorts styles and DOM properties into the panel's category groups.
 
 Both tools appear in the launcher and panel toolbar. Only one is active at a time; Escape exits it.
 
