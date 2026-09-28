@@ -1,0 +1,64 @@
+import type { ProjectReport } from '../shared/types.ts'
+import { BeastLogo, ComponentFinderIcon, ElementPickerIcon } from './Icons.btsx'
+import ProjectPicker from './ProjectPicker.btsx'
+import type { ElementTool } from './element-tools.ts'
+import type { RuntimeSnapshot } from './runtime.ts'
+import { cx, TABS, type TabId } from './util.ts'
+
+module
+  interface TopbarProps {
+    tab: TabId
+    setTab: (next: TabId | ((prev: TabId) => TabId)) => void
+    suggestionCount: number
+    componentFinderActive: boolean
+    componentFinderTitle: 'Stop Component Finder (Esc)' | 'Component Finder (Alt+Shift+C)'
+    setActiveElementTool: (next: ElementTool | ((prev: ElementTool | null) => ElementTool | null) | null) => void
+    elementPickerActive: boolean
+    elementPickerTitle: 'Stop Element Picker (Esc)' | 'Element Picker (Alt+Shift+E)'
+    project: ProjectReport | null
+    projectId: string
+    selectProject: (id: string) => void
+    runtime: RuntimeSnapshot
+    status: string
+    setOpen: (next: boolean | ((prev: boolean) => boolean)) => void
+  }
+  interface MainTabsProps {
+    tab: TabId
+    setTab: (next: TabId | ((prev: TabId) => TabId)) => void
+    suggestionCount: number
+    componentCount: number
+  }
+
+component MainTabs
+  props { tab, setTab, suggestionCount, componentCount }: MainTabsProps
+  nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels" className="has[:focus]:rounded-sm! rounded-full")
+    each item in TABS key item.id
+      button(
+        ~ type="button"
+        ~ role="tab"
+        ~ aria-selected={tab === item.id}
+        ~ className={cx('bdt-tab', tab === item.id && 'is-active')}
+        ~ onClick={() => setTab(item.id)}
+        ~ )
+        | #{item.label}
+        if item.id === 'components' && componentCount > 0
+          span.bdt-tab-count.bdt-component-count #{componentCount ?? 0}
+        if item.id === 'refactor' && suggestionCount > 0
+          span.bdt-tab-count.bdt-refactor-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
+
+props { tab, setTab, suggestionCount, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, project, projectId, selectProject, runtime, status, setOpen }: TopbarProps
+header.bdt-topbar
+  .bdt-brand
+    BeastLogo
+    div(className="skew-2 font-semibold! text-text text-base!") Beast
+    span.bdt-brand-sub Devtools
+  MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentCount={runtime.componentCount})
+  .bdt-spacer
+  button(type="button" className={cx('bdt-icon-button', componentFinderActive && 'is-component-finder-active')} aria-pressed={componentFinderActive} aria-label="Component Finder" title={componentFinderTitle} onClick={() => setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder')})
+    ComponentFinderIcon
+  button(type="button" className={cx('bdt-icon-button', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})
+    ElementPickerIcon
+  ProjectPicker(root={project?.root ?? ''} external={projectId !== ''} onSelect={selectProject})
+  button.bdt-icon-button(type="button" aria-label="Close Beast DevTools" title="Close (Alt+Shift+D)" onClick={() => setOpen(false)})
+    svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
+      path(d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round")
