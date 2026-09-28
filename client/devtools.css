@@ -140,7 +140,7 @@
     visibility 0s linear 200ms;
 }
 
-.bdt-launcher-pick {
+:is(.bdt-launcher-component-finder, .bdt-launcher-element-picker) {
   display: inline-grid;
   place-items: center;
   width: 36px;
@@ -152,22 +152,22 @@
   /*color: var(--bdt-muted);*/
 }
 
-.bdt-launcher-pick:hover {
+:is(.bdt-launcher-component-finder, .bdt-launcher-element-picker):hover {
   opacity: 1;
 }
 
-.bdt-launcher-pick svg {
+:is(.bdt-launcher-component-finder, .bdt-launcher-element-picker) svg {
   display: block;
   width: 16px;
   height: 16px;
 }
 
-.bdt-root .is-picking {
+.bdt-root .is-component-finder-active {
   color: var(--bdt-accent);
   background: #ffffff10;
 }
 
-.bdt-root .is-prop-picking {
+.bdt-root .is-element-picker-active {
   color: var(--bdt-active);
   background: #ffffff10;
 }
@@ -1664,11 +1664,11 @@ html.bdt-resizing * {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Element picker. The highlight sits on top of the app, outside `.bdt-root`, */
+/* Component Finder and Element Picker. The highlight sits on top of the app, outside `.bdt-root`, */
 /* just under the overlay, and never takes pointer events.                   */
 
-.bdt-picker-box,
-.bdt-picker-label {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight),
+:is(.bdt-component-finder-label, .bdt-element-picker-card) {
   position: fixed;
   top: 0;
   left: 0;
@@ -1678,15 +1678,15 @@ html.bdt-resizing * {
   pointer-events: none;
 }
 
-.bdt-picker-box {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight) {
   border: 1.5px solid #ff415a;
   border-radius: 3px;
   background: rgba(255, 65, 90, 0.1);
 }
 
 /* The box and label glide between elements; `is-snapping` places them without gliding. */
-.bdt-picker-box,
-.bdt-picker-label {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight),
+:is(.bdt-component-finder-label, .bdt-element-picker-card) {
   opacity: 0;
   transition:
     transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1696,17 +1696,17 @@ html.bdt-resizing * {
     opacity 120ms ease;
 }
 
-.bdt-picker-box.is-visible,
-.bdt-picker-label.is-visible {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight).is-visible,
+:is(.bdt-component-finder-label, .bdt-element-picker-card).is-visible {
   opacity: 1;
 }
 
-.bdt-picker-box.is-snapping,
-.bdt-picker-label.is-snapping {
+:is(.bdt-component-finder-highlight, .bdt-element-picker-highlight).is-snapping,
+:is(.bdt-component-finder-label, .bdt-element-picker-card).is-snapping {
   transition: opacity 120ms ease;
 }
 
-.bdt-picker-label {
+:is(.bdt-component-finder-label, .bdt-element-picker-card) {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1729,19 +1729,19 @@ html.bdt-resizing * {
   white-space: nowrap;
 }
 
-.bdt-picker-label strong {
+:is(.bdt-component-finder-label, .bdt-element-picker-card) strong {
   color: #ff415a;
   font-weight: 600;
 }
 
-.bdt-picker-label span {
+:is(.bdt-component-finder-label, .bdt-element-picker-card) span {
   overflow: hidden;
   text-overflow: ellipsis;
   color: #a4a5a0;
 }
 
-html.bdt-picking,
-html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
+html:is(.bdt-component-finder-active, .bdt-element-picker-active),
+html:is(.bdt-component-finder-active, .bdt-element-picker-active) :not(#beast-devtools, #beast-devtools *) {
   cursor: crosshair !important;
 }
 
@@ -1750,8 +1750,8 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   .bdt-dock,
   .bdt-launcher-host,
   .bdt-splitter::after,
-  .bdt-picker-box,
-  .bdt-picker-label {
+  :is(.bdt-component-finder-highlight, .bdt-element-picker-highlight),
+  :is(.bdt-component-finder-label, .bdt-element-picker-card) {
     transition-duration: 1ms !important;
     transition-delay: 0s !important;
   }
@@ -1761,8 +1761,8 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   }
 }
 
-/* Computed element properties share the picker's non-interactive highlight. */
-.bdt-properties-label {
+/* Element Picker card. */
+.bdt-element-picker-card {
   /* Hide immediately while moving; never animate the card across its target. */
   visibility: hidden;
   transition: none;
@@ -1775,11 +1775,11 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   overflow-wrap: anywhere;
 }
 
-.bdt-properties-label > span {
+.bdt-element-picker-card > span {
   display: block;
 }
 
-.bdt-properties-label dl {
+.bdt-element-picker-card dl {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 6px 10px;
@@ -1788,26 +1788,26 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
   font: inherit;
 }
 
-.bdt-properties-label dt,
-.bdt-properties-label dd {
+.bdt-element-picker-card dt,
+.bdt-element-picker-card dd {
   margin: 0;
   padding: 0;
   font: inherit;
 }
 
-.bdt-properties-label dt,
-.bdt-properties-label small {
+.bdt-element-picker-card dt,
+.bdt-element-picker-card small {
   color: #a4a5a0;
 }
 
-.bdt-properties-label small {
+.bdt-element-picker-card small {
   display: block;
   font:
     10px/1.5 ui-monospace,
     monospace;
 }
 
-.bdt-properties-label.is-visible {
+.bdt-element-picker-card.is-visible {
   visibility: visible;
 }
 

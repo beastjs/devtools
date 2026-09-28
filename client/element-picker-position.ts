@@ -6,7 +6,7 @@ interface Rect {
 }
 
 /** Keep the whole card in the viewport and outside the element, with an 8px gap. */
-export function placeDetailCard(rect: Rect, width: number, height: number, viewportWidth: number, viewportHeight: number): { left: number; top: number } | null {
+export function placeElementPickerCard(rect: Rect, width: number, height: number, viewportWidth: number, viewportHeight: number): { left: number; top: number } | null {
   const gap = 8
   const edge = 4
   const maxLeft = viewportWidth - width - edge

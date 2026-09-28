@@ -15,9 +15,11 @@ export interface BeastDevtoolsOptions {
   analyzer?: Partial<AnalyzerSettings>
   /**
    * Tag the DOM elements of project `.btsx` files with their component and
-   * source line, so the overlay's element picker can name them and open them
+   * source line, so the overlay's Component Finder can name them and open them
    * in your editor. Default: `true`.
    */
+  componentFinder?: boolean
+  /** @deprecated Use componentFinder. This legacy option controls source tagging, not Element Picker. */
   elementPicker?: boolean
 }
 
@@ -114,7 +116,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           const location = url.searchParams.get('file')
           if (location === null || location === '') return send(400, { error: 'Missing file.' })
           res.statusCode = 307
-          // The element picker sends project-relative locations; absolute ones pass through.
+          // Component Finder sends project-relative locations; absolute ones pass through.
           res.setHeader('Location', editorUrl(resolve(root, location)))
           return res.end()
         }

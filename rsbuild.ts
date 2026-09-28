@@ -28,7 +28,7 @@ export function beastDevtools(options: BeastDevtoolsOptions = {}): RsbuildPlugin
         return mergeEnvironmentConfig(config, { source: { preEntry: [CLIENT_ENTRY] } })
       })
 
-      if (options.elementPicker !== false) {
+      if ((options.componentFinder ?? options.elementPicker) !== false) {
         api.modifyRspackConfig((config) => {
           ;(config.plugins ??= []).push(new SourceTagsPlugin())
         })

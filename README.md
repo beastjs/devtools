@@ -36,8 +36,8 @@ Production builds are untouched. The plugin runs on the dev server only.
 | Capability | What it does | Why it matters |
 | --- | --- | --- |
 | **Components** | Live component tree with hooks, context and effects | Debug state without logging |
-| **Element properties** | Hover HTML or SVG elements to see spacing, size, ID and type | Inspect layout without source tags |
-| **Element picker** | Hover the page to see a component and its `.btsx` line | Go from pixels to source |
+| **Element Picker** | Hover HTML or SVG elements to see spacing, size, ID and type | Inspect layout without source tags |
+| **Component Finder** | Hover the page to see a component and its `.btsx` line | Go from pixels to source |
 | **BTSX → TSRX** | Source and compiled output, linked line by line | See what Beast generates |
 | **Refactor** | Finds deep nesting, repeated markup and sibling runs | Keeps templates readable |
 | **Auto-refactor** | Writes the component, props interface and imports | Refactors in one reviewed step |
@@ -150,9 +150,9 @@ click the **Beast** button in the bottom-right corner.
 | Action | How |
 | --- | --- |
 | Open or close the panel | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, or the **Beast** button |
-| Start or stop the element picker | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, or the crosshair button |
-| Start or stop element properties | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or the ruler button |
-| Cancel picking or inspecting | <kbd>Esc</kbd> |
+| Start or stop the Component Finder | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, or the crosshair button |
+| Start or stop Element Picker | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or the ruler button |
+| Exit Component Finder or Element Picker | <kbd>Esc</kbd> |
 | Resize the panel | Drag its top edge |
 | Resize a pane | Drag the edge between two panes |
 | Reset a pane's width | Double-click that edge |
@@ -161,17 +161,17 @@ The panel remembers its height, pane widths, open tab and analyzer settings
 per browser. It slides in and out, and all motion becomes near-instant when
 the system asks for reduced motion.
 
-### Element picker
+### Component Finder
 
-Turn on the picker and hover any element of your app. An outline follows the
+Turn on Component Finder and hover any element of your app. An outline follows the
 pointer, labeled with the component that renders the element and its `.btsx`
 file and line. Click to open that line in your editor. That also ends
-picking.
+Component Finder.
 
-While the picker is on, clicks go to the picker, not your app. The overlay's
+While Component Finder is on, app clicks select a component to open in the editor. The overlay's
 own controls keep working.
 
-### Element properties
+### Element Picker
 
 Click the ruler button in the launcher or panel toolbar, or press
 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. Hover a page element to see its
@@ -183,7 +183,7 @@ outline is shown. Elements without an ID show **—**. Dimensions use the elemen
 rectangle, including borders and CSS transforms.
 
 This mode works without source tags or the Octane runtime inspection hook.
-Only one picker mode is active at a time. App clicks are suppressed while
+Only one of Component Finder and Element Picker is active at a time. App clicks are suppressed while
 inspecting; the DevTools controls remain usable. Press <kbd>Esc</kbd> or toggle
 the ruler button to exit. Elements inside iframes and closed shadow roots
 are inspected at their containing element.
@@ -328,7 +328,7 @@ can be opened too; they show an empty file list.
 
 The selection belongs to the current browser tab and resets on reload. Use
 **Back to running app** to return to the configured project. Live components
-and element picking always inspect the running app; following a component's
+and Component Finder always inspect the running app; following a component's
 source link switches back to that project. Opening a folder does not start
 its dev server.
 
@@ -338,7 +338,7 @@ its dev server.
 beastDevtools({
   include: ['src'],
   analyzer: { depthLimit: 5, minLines: 8, fileLines: 30 },
-  elementPicker: true,
+  componentFinder: true,
 })
 ```
 
@@ -348,7 +348,10 @@ beastDevtools({
 | `analyzer.depthLimit` | `5` | Nesting depth (0 = component root) above which a line counts as deep |
 | `analyzer.minLines` | `8` | Smallest section, in lines, worth extracting |
 | `analyzer.fileLines` | `30` | Sections at least this long move to their own file by default |
-| `elementPicker` | `true` | Tag elements with their component and source line for the picker |
+| `componentFinder` | `true` | Tag elements with their component and source line for Component Finder |
+
+`elementPicker` remains a deprecated alias for `componentFinder`. When both are
+provided, `componentFinder` takes precedence. Element Picker works without source tags.
 
 The project root is Vite's `root`, Rspack's `context`, or Rsbuild's root path.
 Analyzer settings changed in the panel override these defaults for that
@@ -367,7 +370,7 @@ flowchart LR
         O[Overlay] --> H[Octane inspection hook]
         O --> API
         S --> O
-        P[Element picker] --> E[Editor endpoint]
+        P[Component Finder] --> E[Editor endpoint]
     end
     B --> Page
 ```
@@ -383,7 +386,7 @@ flowchart LR
   app's own Beast and Octane compile it. It reads the component tree from
   Octane's `__OCTANE_DEVTOOLS__` hook, which `profile` enables. The app and the
   overlay share one Octane runtime.
-- **Element picker.** Before Beast compiles a project `.btsx` file, the plugin
+- **Component Finder.** Before Beast compiles a project `.btsx` file, the plugin
   adds `data-beast-src="path:line:column"` and `data-beast-component` to each
   of its HTML elements. The attributes are static, so Octane builds them into
   its templates at no runtime cost. Component calls and files in
@@ -418,7 +421,7 @@ requests from your own page.
 | --- | --- |
 | Components shows **Runtime off** | Octane's inspection hook is missing. Enable `profile` in `beastOctane()` for dev builds, as in [Quick start](#quick-start). |
 | The overlay is unstyled under Rspack | Add a rule for `.css` files: `{ test: /\.css$/, type: 'css' }`. |
-| The picker outlines nothing | `elementPicker` is `false`, or the element comes from a package in `node_modules`, which isn't tagged. |
+| Component Finder outlines nothing | `componentFinder` is `false`, or the element comes from a package in `node_modules`, which isn't tagged. |
 | **Open in editor** does nothing | Set `LAUNCH_EDITOR` to your editor's command (for example `code` or `cursor`) and restart the dev server. |
 | A file is missing from the file list | It sits outside the `include` directories. Add its directory to `include`. |
 | Panel sizes or settings look wrong | Clear the `beast-devtools:preferences` and `beast-devtools:layout` keys from the page's local storage. |
@@ -434,10 +437,10 @@ requests from your own page.
   each other. That's safe, because the values are read at render time, but
   the import cycle is worth knowing about.
 - Imports that only the moved section used are left in the source file.
-- Picker attributes are inserted into tagged lines, so dev-server error
+- Component Finder attributes are inserted into tagged lines, so dev-server error
   columns on those lines can point slightly past the real position. Line
   numbers are exact.
-- The picker names the component whose template holds an element. Markup
+- Component Finder names the component whose template holds an element. Markup
   passed in as children belongs to the file that wrote it.
 
 ## Repository structure
@@ -453,11 +456,11 @@ requests from your own page.
 │   ├── types.ts                     # Prop types from the project's TypeScript
 │   ├── slots.ts, source-scan.ts     # BTSX and TypeScript source scanning
 │   ├── diff.ts, line-map.ts         # Diff previews and source-map line links
-│   └── source-tags*.ts              # Element picker tagging and Rspack loader
+│   └── source-tags*.ts              # Component Finder tagging and Rspack loader
 ├── client/                          # The overlay, shipped as BTSX source
 │   ├── BeastDevtools.btsx           # Shell: dock, launcher, tabs
 │   ├── *Panel.btsx                  # Components, BTSX → TSRX, Refactor
-│   ├── picker.ts, layout.ts         # Element picker and resizable panes
+│   ├── element-tools.ts, layout.ts  # Component Finder, Element Picker and resizable panes
 │   ├── runtime.ts, api.ts           # Octane hook store and API client
 │   └── devtools.css                 # Scoped styles (every class is bdt-*)
 ├── shared/types.ts                  # Wire types shared by both sides

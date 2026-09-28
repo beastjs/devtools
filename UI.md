@@ -1,26 +1,36 @@
-Both icons and the launcher's markup are in [client/BeastDevtools.btsx](client/BeastDevtools.btsx), and their styles are in [client/devtools.css](client/devtools.css).
+The icons and launcher markup are in [client/BeastDevtools.btsx](client/BeastDevtools.btsx), with styles in [client/devtools.css](client/devtools.css).
 
-**Icons** (each is defined once and used in both the launcher and the panel's top bar):
+**Tools**
 
-- **Beast logo:** the `BeastLogo` component at [BeastDevtools.btsx:31](client/BeastDevtools.btsx:31). It draws the SVG path in the `LOGO_PATH` constant at [line 17](client/BeastDevtools.btsx:17), so to swap the logo, replace that path string (it's drawn in a 16×16 viewBox).
-- **Picker icon:** the `PickIcon` component at [BeastDevtools.btsx:35](client/BeastDevtools.btsx:35). It's a small inline SVG: corner brackets plus a dot. Edit its `path`/`circle`, or replace them with your own SVG in the same 16×16 viewBox.
+- **Component Finder** identifies the component that owns an element and its source file. Click to open the source in your editor. Shortcut: Alt+Shift+C.
+- **Element Picker** shows basic element properties on a card: type, ID, dimensions, padding and margin. Shortcut: Alt+Shift+E.
 
-**Launcher markup:** the last block of the file, starting at [BeastDevtools.btsx:230](client/BeastDevtools.btsx:230). It holds:
+Both tools appear in the launcher and panel toolbar. Only one is active at a time; Escape exits it.
 
-- the picker button (`.bdt-launcher-pick`);
-- the main launcher button (`.bdt-launcher`), with the logo, the "Beast" label and the live-status dot.
+**Icons and state**
 
-The panel's top-bar copies of the icons are at [line 175](client/BeastDevtools.btsx:175) (logo) and [line 192](client/BeastDevtools.btsx:192) (picker button).
+- `BeastLogo` draws the SVG path stored in `LOGO_PATH`.
+- `ComponentFinderIcon` draws the corner brackets and dot.
+- `ElementPickerIcon` draws the ruler.
+- `activeElementTool` selects `component-finder`, `element-picker`, or `null`.
+- `componentFinderActive` and `elementPickerActive` control each button's active state.
 
-**Styles in [devtools.css](client/devtools.css):**
+**Behavior**
 
-| What                                         | Selector                | Line                           |
-| -------------------------------------------- | ----------------------- | ------------------------------ |
-| Launcher position, gap, show/hide transition | `.bdt-launcher-host`    | [93](client/devtools.css:93)   |
-| Round picker button, and its icon size       | `.bdt-launcher-pick`    | [118](client/devtools.css:118) |
-| "Beast" pill button                          | `.bdt-launcher`         | [145](client/devtools.css:145) |
-| Status dot                                   | `.bdt-launcher-dot`     | [167](client/devtools.css:167) |
-| Logo size and color                          | `.bdt-logo`             | [179](client/devtools.css:179) |
-| Picker button's active (red) state           | `.bdt-root .is-picking` | (search for it)                |
+[client/element-tools.ts](client/element-tools.ts) exports `startComponentFinder` and `startElementPicker`, sharing pointer tracking and highlight behavior. [client/element-picker-position.ts](client/element-picker-position.ts) exports `placeElementPickerCard` for card placement.
 
-The playground dev server hot-reloads both files, so edits show up right away.
+**Styles**
+
+| What | Selector |
+| --- | --- |
+| Launcher placement and transitions | `.bdt-launcher-host` |
+| Component Finder launcher button | `.bdt-launcher-component-finder` |
+| Element Picker launcher button | `.bdt-launcher-element-picker` |
+| Component Finder button active state | `.is-component-finder-active` |
+| Element Picker button active state | `.is-element-picker-active` |
+| Component Finder page highlight and label | `.bdt-component-finder-highlight`, `.bdt-component-finder-label` |
+| Element Picker page highlight and card | `.bdt-element-picker-highlight`, `.bdt-element-picker-card` |
+| Page cursor while a tool is active | `html.bdt-component-finder-active`, `html.bdt-element-picker-active` |
+| Main launcher, status dot and logo | `.bdt-launcher`, `.bdt-launcher-dot`, `.bdt-logo` |
+
+The playground dev server hot-reloads the component and CSS files.
