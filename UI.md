@@ -5,7 +5,7 @@ The launcher markup is in [client/BeastDevtools.btsx](client/BeastDevtools.btsx)
 - **Component Finder** identifies the component that owns an element and its source file. Click to open the source in your editor. Shortcut: Alt+Shift+C.
 - **Element Picker** shows a compact tag/ID and dimensions preview. Clicking opens the Elements panel for live style, attribute and DOM-property edits with undo. Shortcut: Alt+Shift+E.
 
-[client/ElementsPanel.btsx](client/ElementsPanel.btsx) contains the live editor; [client/element-inspector.ts](client/element-inspector.ts) captures properties and manages edits and undo. [client/element-groups.ts](client/element-groups.ts) sorts styles and DOM properties into the panel's category groups.
+[client/ElementsPanel.btsx](client/ElementsPanel.btsx) contains the live editor; [client/element-inspector.ts](client/element-inspector.ts) captures properties and manages edits and undo. [client/element-groups.ts](client/element-groups.ts) sorts styles and DOM properties into the panel's category groups. [client/element-layout.ts](client/element-layout.ts) draws the open element's outline and side handles for resizing it on the page.
 
 Both tools appear in the launcher and panel toolbar. Only one is active at a time; Escape exits it.
 
@@ -32,6 +32,7 @@ Both tools appear in the launcher and panel toolbar. Only one is active at a tim
 | Element Picker button active state | `.is-element-picker-active` |
 | Component Finder page highlight and label | `.bdt-component-finder-highlight`, `.bdt-component-finder-label` |
 | Element Picker page highlight and card | `.bdt-element-picker-highlight`, `.bdt-element-picker-card` |
+| Resize outline, side handles and size readout | `.bdt-layout-frame`, `.bdt-layout-handle`, `.bdt-layout-size` |
 | Page cursor while a tool is active | `html.bdt-component-finder-active`, `html.bdt-element-picker-active` |
 | Main launcher, status dot and logo | `.bdt-launcher`, `.bdt-launcher-dot`, `.bdt-logo` |
 

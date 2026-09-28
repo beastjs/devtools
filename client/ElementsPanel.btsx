@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'octane'
 import { groupAttributes, groupProperties, groupStyles, type ElementSection } from './element-groups.ts'
 import { COMMON_STYLES, type ElementInspection, type ElementProperty, type ElementPropertyGroup } from './element-inspector.ts'
+import { startLayoutEditor } from './element-layout.ts'
 import { cx } from './util.ts'
 
 module
@@ -86,6 +87,8 @@ setup
     const timer = window.setInterval(refresh, 1000);
     return () => window.clearInterval(timer);
   }, [inspection]);
+  // Outline the element on the page, with side handles to resize it.
+  useEffect(() => inspection ? startLayoutEditor(inspection, refresh) : undefined, [inspection]);
   const edit = (name: string, value: string | null) => {
     if (!inspection) return;
     try {
@@ -147,7 +150,7 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
             button(type="button" className={cx('bdt-element-group', group === item.id && 'is-active')} aria-pressed={group === item.id} onClick={() => chooseGroup(item.id)})
               span #{item.label}
               span.bdt-dim #{snapshot[item.id].length}
-          p.bdt-element-note Changes apply to the live page. Reloading restores the app’s original values.
+          p.bdt-element-note Changes apply to the live page. Drag the outline’s sides on the page to resize. Reloading restores the app’s original values.
         .bdt-element-content
           .bdt-element-filter
             input.bdt-input(type="search" aria-label="Filter element properties" placeholder="Find a property or value…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
