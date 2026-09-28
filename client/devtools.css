@@ -272,7 +272,8 @@
   border-bottom: 1px solid var(--bdt-line);
   background: var(--bdt-bg-2);
   flex: none;
-  overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .bdt-brand {
@@ -1803,4 +1804,69 @@ html.bdt-picking :not(#beast-devtools, #beast-devtools *) {
 
 .bdt-properties-label.is-visible {
   visibility: visible;
+}
+
+.bdt-project-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bdt-project-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  width: min(380px, calc(100vw - 24px));
+  max-height: 40vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--bdt-line-2);
+  border-radius: 10px;
+  background: var(--bdt-bg-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.bdt-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bdt-project-form-header {
+  display: flex;
+  justifiy-content: justifiy-between;
+}
+.bdt-project-form .bdt-input {
+  width: 100%;
+  min-width: 0;
+}
+.bdt-project-actions {
+  display: flex;
+  justify-content: justifiy-between;
+  gap: 8px;
+}
+.bdt-project-actions-left {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+}
+.bdt-project-actions-right {
+  display: flex;
+  gap: 8px;
+}
+.bdt-project-message {
+  margin: 8px 0 0;
+  color: var(--bdt-bad);
+  font-size: 11px;
+  text-align: right;
+}
+
+.bdt-project-path-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bdt-project-path-input .bdt-input {
+  flex: 1;
 }

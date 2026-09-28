@@ -17,8 +17,8 @@ async function get<T>(endpoint: string, params: Record<string, string | number>)
   return body as T
 }
 
-async function post<T>(endpoint: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+async function post<T>(endpoint: string, body: unknown, project = ''): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}?${new URLSearchParams({ project })}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -28,21 +28,21 @@ async function post<T>(endpoint: string, body: unknown): Promise<T> {
   return result as T
 }
 
-export function fetchProject(settings: AnalyzerSettings): Promise<ProjectReport> {
-  return get<ProjectReport>('/project', { ...settings })
+export function fetchProject(settings: AnalyzerSettings, project = ''): Promise<ProjectReport> {
+  return get<ProjectReport>('/project', { ...settings, project })
 }
 
-export function fetchFile(path: string, settings: AnalyzerSettings): Promise<FileReport> {
-  return get<FileReport>('/file', { path, ...settings })
+export function fetchFile(path: string, settings: AnalyzerSettings, project = ''): Promise<FileReport> {
+  return get<FileReport>('/file', { path, ...settings, project })
 }
 
 /** Preview (`dryRun`) or write a refactor suggestion. */
-export function applyRefactor(request: ApplyRequest): Promise<ApplyResult> {
-  return post<ApplyResult>('/apply', request)
+export function applyRefactor(request: ApplyRequest, project = ''): Promise<ApplyResult> {
+  return post<ApplyResult>('/apply', request, project)
 }
 
-export function undoRefactor(id: string): Promise<UndoResult> {
-  return post<UndoResult>('/undo', { id })
+export function undoRefactor(id: string, project = ''): Promise<UndoResult> {
+  return post<UndoResult>('/undo', { id }, project)
 }
 
 /** Called with the project-relative path whenever a `.btsx` file changes on disk. */
@@ -68,4 +68,16 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+export function openProject(path: string): Promise<{ id: string; root: string }> {
+  return post('/open-project', { path })
+}
+
+export function browseProject(): Promise<{ path: string | null }> {
+  return post('/browse-project', {})
+}
+
+export function fetchSelection(path: string, line: number, settings: AnalyzerSettings, project = ''): Promise<FileReport> {
+  return get('/file', { path, line, ...settings, project })
 }

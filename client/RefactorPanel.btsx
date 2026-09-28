@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'octane'
+import { useEffect, useRef, useState } from 'octane'
 import type { AnalyzerSettings, ApplyResult, DiffLine, FileReport, FileSummary, RefactorSuggestion, RefactorTarget } from '../shared/types.ts'
 import CodeView from './CodeView.btsx'
 import FileList from './FileList.btsx'
-import { applyRefactor, copyText, openInEditor, undoRefactor } from './api.ts'
+import { applyRefactor, copyText, fetchSelection, openInEditor, undoRefactor } from './api.ts'
 import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
 import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
 
 module
   interface RefactorPanelProps {
+    projectId: string
     files: readonly FileSummary[]
     file: string | null
     report: FileReport | null
@@ -64,6 +65,7 @@ module
   }
 
   function kindLabel(suggestion: RefactorSuggestion): string {
+    if (suggestion.id.startsWith('manual:')) return 'manual'
     if (suggestion.mapping !== null) return `${suggestion.mapping.items.length}× repeated`
     return suggestion.kind === 'extract' ? '✦' : `${suggestion.occurrences.length}× same shape`
   }
@@ -84,7 +86,7 @@ module
     return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : null
   }
 
-props { files, file, report, loadError, settings, recent, onSelectFile, onSettingsChange, onRecentChange }: RefactorPanelProps
+props { projectId, files, file, report, loadError, settings, recent, onSelectFile, onSettingsChange, onRecentChange }: RefactorPanelProps
 setup
   const [names, setNames] = useState<Record<string, string>>({});
   const nameOf = (suggestion: RefactorSuggestion) => names[suggestion.id] ?? suggestion.name;
@@ -101,12 +103,53 @@ setup
   const [scroll, setScroll] = useState<ScrollTarget | null>(null);
   const current = report !== null && report.path === file ? report : null;
   const analysis = current?.analysis ?? null;
-  const selected = analysis?.suggestions.find((suggestion) => suggestion.id === selectedId) ?? null;
+  const [manual, setManual] = useState<{ hash: string; path: string; suggestion: RefactorSuggestion } | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const selectionRequest = useRef(0);
+  const suggestionsPane = useRef<HTMLElement | null>(null);
+  const manualSuggestion = manual?.hash === current?.hash && manual?.path === file ? manual?.suggestion : null;
+  const suggestions = [...(manualSuggestion ? [manualSuggestion] : []), ...(analysis?.suggestions ?? [])];
+  const selected = suggestions.find((suggestion) => suggestion.id === selectedId) ?? null;
+  useEffect(() => {
+    if (manualSuggestion && suggestionsPane.current) suggestionsPane.current.scrollTop = 0;
+  }, [manualSuggestion]);
   const histogramMax = Math.max(1, ...(analysis?.histogram ?? [1]));
   const select = (suggestion: RefactorSuggestion) => {
     setSelectedId(suggestion.id);
     setScroll(scrollTarget(suggestion.startLine));
   };
+  const selectBlock = async (line: number) => {
+    if (current === null || pending?.status === 'applying') return;
+    const request = ++selectionRequest.current;
+    setSelecting(true);
+    setSelectionError(null);
+    setManual(null);
+    setSelectedId(null);
+    setPending(null);
+    try {
+      const selection = await fetchSelection(current.path, line, settings, projectId);
+      if (request !== selectionRequest.current) return;
+      if (selection.hash !== current.hash) throw new Error('The file changed. Wait for it to refresh and select the block again.');
+      const suggestion = selection.analysis?.suggestions[0];
+      if (suggestion && suggestion.id !== `manual:${line}`) throw new Error('Restart the dev server to enable manual extraction, then select the block again.');
+      if (!suggestion) throw new Error('Click the first line of an HTML element or a complete control-flow block. Imports, setup, continuation lines and existing component calls cannot be extracted.');
+      setManual({ hash: selection.hash, path: selection.path, suggestion });
+      setNames((value) => ({ ...value, [suggestion.id]: suggestion.name }));
+      setSelectedId(suggestion.id);
+      setOpenId(null);
+    } catch (error) {
+      if (request === selectionRequest.current) setSelectionError(message(error));
+    } finally {
+      if (request === selectionRequest.current) setSelecting(false);
+    }
+  };
+  useEffect(() => {
+    setManual(null);
+    setSelectionError(null);
+    setSelecting(false);
+    return () => { selectionRequest.current += 1; };
+  }, [file, current?.hash, projectId, settings]);
   const copy = async (key: string, text: string) => {
     if (!(await copyText(text))) return;
     setCopied(key);
@@ -130,7 +173,7 @@ setup
     setPending({ suggestionId: suggestion.id, target, status: 'loading', result: null, error: null, name });
     const same = (value: PendingRefactor | null) => value?.suggestionId === suggestion.id && value.target === target;
     try {
-      const result = await applyRefactor({ ...request, dryRun: true });
+      const result = await applyRefactor({ ...request, dryRun: true }, projectId);
       setPending((value) => (same(value) ? { ...value!, status: 'ready', result } : value));
     } catch (error) {
       setPending((value) => (same(value) ? { ...value!, status: 'ready', error: message(error) } : value));
@@ -141,7 +184,7 @@ setup
     const request = { path: current.path, hash: current.hash, settings, suggestionId: pending.suggestionId, target: pending.target, name: pending.name };
     setPending({ ...pending, status: 'applying' });
     try {
-      const result = await applyRefactor({ ...request, dryRun: false });
+      const result = await applyRefactor({ ...request, dryRun: false }, projectId);
       setPending(null);
       setSelectedId(null);
       setOpenId(null);
@@ -154,7 +197,7 @@ setup
   const undo = async () => {
     if (recent === null) return;
     try {
-      await undoRefactor(recent.undoId);
+      await undoRefactor(recent.undoId, projectId);
       setUndoError(null);
       onRecentChange(null);
     } catch (error) {
@@ -237,14 +280,14 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
               span(className={cx('bdt-histogram-bar', tone(depth, settings.depthLimit))} style={{ height: `${Math.max(2, Math.round((count / histogramMax) * 24))}px` }})
               span.bdt-histogram-label #{depth}
       .bdt-refactor
-        section.bdt-suggestions(aria-label="Refactor suggestions")
-          if analysis.suggestions.length === 0
+        section.bdt-suggestions(ref={suggestionsPane} aria-label="Refactor suggestions")
+          if suggestions.length === 0
             .bdt-empty
               .bdt-empty-card
-                p.bdt-empty-title Nothing to extract
-                p Every section stays within depth #{settings.depthLimit}, and no blocks of #{settings.minLines}+ lines repeat.
+                p.bdt-empty-title No automatic suggestions
+                p Click a starting line in the source to extract a block manually.
           else
-            each suggestion in analysis.suggestions key suggestion.id
+            each suggestion in suggestions key suggestion.id
               article(
                 ~ className={cx('bdt-card', suggestion.id === selectedId && 'is-selected')}
                 ~ onClick={() => select(suggestion)}
@@ -332,7 +375,9 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
           .bdt-pane-head
             span Nesting depth per line
             .bdt-spacer
-            span.bdt-dim #{selected === null ? 'Select a suggestion to highlight it' : `${selected.name}: ${selected.occurrences.length === 1 ? 'section' : `${selected.occurrences.length} copies`} highlighted`}
+            span.bdt-dim #{selecting ? 'Selecting block…' : selected === null ? 'Click a starting line to extract a block' : `${selected.name}: ${selected.occurrences.length === 1 ? 'section' : `${selected.occurrences.length} copies`} highlighted`}
+          if selectionError !== null
+            p.bdt-project-message(role="status") #{selectionError}
           CodeView(
             ~ source={current.source}
             ~ language="btsx"
@@ -340,5 +385,7 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
             ~ depths={analysis.lineDepths}
             ~ depthLimit={settings.depthLimit}
             ~ ranges={selected?.occurrences}
+            ~ activeLine={selected?.startLine}
+            ~ onLineClick={selectBlock}
             ~ scrollTo={scroll}
             ~ )

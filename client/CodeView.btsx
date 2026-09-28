@@ -49,7 +49,10 @@ div.bdt-code(ref={containerRef} role="region" aria-label={label} tabIndex={0} on
         ~ onMouseEnter={() => onLineEnter?.(row.number)}
         ~ onClick={() => onLineClick?.(row.number)}
         ~ )
-        span.bdt-ln #{row.number}
+        if onLineClick !== undefined
+          button.bdt-ln(type="button" aria-label={`Select line ${row.number}`} onClick={(event) => { event.stopPropagation(); onLineClick(row.number); }}) #{row.number}
+        else
+          span.bdt-ln #{row.number}
         if depths !== null
           span.bdt-depth
             if depths[row.number - 1] != null

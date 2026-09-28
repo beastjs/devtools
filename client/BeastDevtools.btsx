@@ -1,5 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'octane'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'octane'
 import type { AnalyzerSettings, FileReport, ProjectReport } from '../shared/types.ts'
+import ProjectPicker from './ProjectPicker.btsx'
 import ComponentsPanel from './ComponentsPanel.btsx'
 import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
@@ -7,6 +8,7 @@ import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts
 import { startPicker, type PickerMode } from './picker.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
 import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
+import type { RuntimeSnapshot } from './runtime.ts'
 
 module
   const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
@@ -42,6 +44,88 @@ component PropertiesIcon
     rect(x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.5")
     path(d="M5 2v3M8 2v2M11 2v3M2 5h3M2 8h2M2 11h3" stroke="currentColor" stroke-width="1.5")
 
+module
+  interface BdtTopbarProps {
+    tab: TabId
+    setTab: (next: TabId | ((prev: TabId) => TabId)) => void
+    suggestionCount: number
+    picking: boolean
+    pickTitle: 'Stop picking (Esc)' | 'Pick an element to open its source (Alt+Shift+C)'
+    setPickerMode: (next: PickerMode | ((prev: PickerMode | null) => PickerMode | null) | null) => void
+    inspecting: boolean
+    inspectTitle: 'Stop inspecting properties (Esc)' | 'Inspect element properties (Alt+Shift+E)'
+    project: ProjectReport | null
+    projectId: string
+    selectProject: (id: string) => void
+    runtime: RuntimeSnapshot
+    status: string
+    setOpen: (next: boolean | ((prev: boolean) => boolean)) => void
+  }
+
+module
+  interface MainTabsProps {
+    tab: TabId
+    setTab: (next: TabId | ((prev: TabId) => TabId)) => void
+    suggestionCount: number
+  }
+
+component MainTabs
+  props { tab, setTab, suggestionCount }: MainTabsProps
+  nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels" className="has[:focus]:rounded-sm! rounded-full")
+    each item in TABS key item.id
+      button(
+        ~ type="button"
+        ~ role="tab"
+        ~ aria-selected={tab === item.id}
+        ~ className={cx('bdt-tab', tab === item.id && 'is-active')}
+        ~ onClick={() => setTab(item.id)}
+        ~ )
+        | #{item.label}
+        if item.id === 'refactor' && suggestionCount > 0
+          span.bdt-tab-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
+
+component BdtTopbar
+  props { tab, setTab, suggestionCount, picking, pickTitle, setPickerMode, inspecting, inspectTitle, project, projectId, selectProject, runtime, status, setOpen }: BdtTopbarProps
+  header.bdt-topbar
+    .bdt-brand
+      BeastLogo
+      div(className="skew-2 font-semibold! text-text text-base!") Beast
+      span.bdt-brand-sub DevTools
+    MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount})
+    .bdt-spacer
+    button(type="button" className={cx('bdt-icon-button', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
+      PickIcon
+    button(type="button" className={cx('bdt-icon-button', inspecting && 'is-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
+      PropertiesIcon
+    ProjectPicker(root={project?.root ?? ''} external={projectId !== ''} onSelect={selectProject})
+    span.bdt-status
+      span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')})
+      | #{status}
+    button.bdt-icon-button(type="button" aria-label="Close Beast DevTools" title="Close (Alt+Shift+D)" onClick={() => setOpen(false)})
+      svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
+        path(d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round")
+
+module
+  interface DevtoolsInterfaceProps {
+    open: boolean
+    picking: boolean
+    pickTitle: 'Stop picking (Esc)' | 'Pick an element to open its source (Alt+Shift+C)'
+    setPickerMode: (next: PickerMode | ((prev: PickerMode | null) => PickerMode | null) | null) => void
+    inspecting: boolean
+    inspectTitle: 'Stop inspecting properties (Esc)' | 'Inspect element properties (Alt+Shift+E)'
+    setOpen: (next: boolean | ((prev: boolean) => boolean)) => void
+  }
+
+component DevtoolsInterface
+  props { open, picking, pickTitle, setPickerMode, inspecting, inspectTitle, setOpen }: DevtoolsInterfaceProps
+  div(className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
+    button(type="button" className={cx('bdt-launcher-pick bg-white/50 backdrop-blur-3xl', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
+      PickIcon
+    button( type="button" className={cx('bdt-launcher-pick bg-white/70 backdrop-blur-3xl hover:text-active!', inspecting && 'is-prop-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
+      PropertiesIcon
+    button.bdt-launcher(className=' backdrop-blur-3xl' type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
+      BeastLogo
+
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [open, setOpen] = useState(initial.open);
@@ -55,6 +139,10 @@ setup
   const [settings, setSettings] = useState<AnalyzerSettings>(initial.settings);
   const [focus, setFocus] = useState<ScrollTarget | null>(null);
   const [revision, setRevision] = useState(0);
+  const [projectId, setProjectId] = useState('');
+  const projectGeneration = useRef(0);
+  const generation = projectGeneration.current;
+  const [runtimeProject, setRuntimeProject] = useState<ProjectReport | null>(null);
   const [project, setProject] = useState<ProjectReport | null>(null);
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -127,46 +215,61 @@ setup
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    fetchProject(settings).then(
-      (next) => {
-        if (cancelled) return;
+    Promise.all([fetchProject(settings, projectId), fetchProject(settings)]).then(
+      ([next, running]) => {
+        if (cancelled || generation !== projectGeneration.current) return;
+        setRuntimeProject(running);
         setProject(next);
         setLoadError(null);
         setFile((current) => (current !== null && next.files.some((entry) => entry.path === current) ? current : (next.files[0]?.path ?? null)));
       },
       (error: Error) => {
-        if (!cancelled) setLoadError(error.message);
+        if (!cancelled && generation === projectGeneration.current) setLoadError(error.message);
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [open, revision, settings]);
+  }, [open, revision, settings, projectId]);
 
   useEffect(() => {
     if (!open || file === null) return;
     let cancelled = false;
-    fetchFile(file, settings).then(
+    fetchFile(file, settings, projectId).then(
       (next) => {
-        if (cancelled) return;
+        if (cancelled || generation !== projectGeneration.current) return;
         setReport(next);
         setLoadError(null);
       },
       (error: Error) => {
-        if (!cancelled) setLoadError(error.message);
+        if (!cancelled && generation === projectGeneration.current) setLoadError(error.message);
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [open, file, revision, settings]);
+  }, [open, file, revision, settings, projectId]);
 
+  const selectProject = (id: string) => {
+    projectGeneration.current += 1;
+    setProjectId(id);
+    setProject(null);
+    setFile(null);
+    setReport(null);
+    setFocus(null);
+    setRecent(null);
+    setLoadError(null);
+    setTab('inspector');
+    setRevision((value) => value + 1);
+  };
   const viewSource = (path: string, line: number) => {
+    if (projectId !== '') selectProject('');
     setFile(path);
     setTab('inspector');
     setFocus(scrollTarget(line));
   };
   const analyze = (path: string) => {
+    if (projectId !== '') selectProject('');
     setFile(path);
     setTab('refactor');
   };
@@ -185,40 +288,13 @@ if open || docked
       ~ aria-label="Resize Beast DevTools"
       ~ onPointerDown={(event) => startResize(event, height, setHeight)}
       ~ )
-    header.bdt-topbar
-      .bdt-brand
-        BeastLogo
-        div(className="skew-2 font-semibold! text-text text-base!") Beast
-        span.bdt-brand-sub DevTools
-      nav.bdt-tabs(role="tablist" aria-label="Beast DevTools panels" className="has[:focus]:rounded-sm! rounded-full")
-        each item in TABS key item.id
-          button(
-            ~ type="button"
-            ~ role="tab"
-            ~ aria-selected={tab === item.id}
-            ~ className={cx('bdt-tab', tab === item.id && 'is-active')}
-            ~ onClick={() => setTab(item.id)}
-            ~ )
-            | #{item.label}
-            if item.id === 'refactor' && suggestionCount > 0
-              span.bdt-tab-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
-      .bdt-spacer
-      button(type="button" className={cx('bdt-icon-button', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
-        PickIcon
-      button(type="button" className={cx('bdt-icon-button', inspecting && 'is-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
-        PropertiesIcon
-      span.bdt-status
-        span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')})
-        | #{status}
-      button.bdt-icon-button(type="button" aria-label="Close Beast DevTools" title="Close (Alt+Shift+D)" onClick={() => setOpen(false)})
-        svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
-          path(d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round")
+    BdtTopbar(tab={tab} setTab={setTab} suggestionCount={suggestionCount} picking={picking} pickTitle={pickTitle} setPickerMode={setPickerMode} inspecting={inspecting} inspectTitle={inspectTitle} project={project} projectId={projectId} selectProject={selectProject} runtime={runtime} status={status} setOpen={setOpen})
     div.bdt-body(role="tabpanel" aria-label={TABS.find((item) => item.id === tab)?.label})
       switch tab
         case 'components'
           ComponentsPanel(
-            ~ components={project?.components ?? []}
-            ~ entryComponents={project?.entryComponents ?? []}
+            ~ components={runtimeProject?.components ?? []}
+            ~ entryComponents={runtimeProject?.entryComponents ?? []}
             ~ view={componentsView}
             ~ onViewChange={setComponentsView}
             ~ showControlFlow={showControlFlow}
@@ -237,6 +313,8 @@ if open || docked
             ~ )
         default
           RefactorPanel(
+            ~ key={projectId}
+            ~ projectId={projectId}
             ~ files={project?.files ?? []}
             ~ file={file}
             ~ report={report}
@@ -245,14 +323,6 @@ if open || docked
             ~ recent={recent}
             ~ onSelectFile={setFile}
             ~ onSettingsChange={setSettings}
-            ~ onRecentChange={setRecent}
+            ~ onRecentChange={(value) => { if (generation === projectGeneration.current) setRecent(value); }}
             ~ )
-div(className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
-  button(type="button" className={cx('bdt-launcher-pick bg-white/50 backdrop-blur-3xl', picking && 'is-picking')} aria-pressed={picking} aria-label="Pick an element" title={pickTitle} onClick={() => setPickerMode((value) => value === 'source' ? null : 'source')})
-    PickIcon
-  button( type="button" className={cx('bdt-launcher-pick bg-white/70 backdrop-blur-3xl hover:text-active!', inspecting && 'is-prop-picking')} aria-pressed={inspecting} aria-label="Inspect element properties" title={inspectTitle} onClick={() => setPickerMode((value) => value === 'properties' ? null : 'properties')})
-    PropertiesIcon
-  button.bdt-launcher(className=' backdrop-blur-3xl' type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
-    BeastLogo
-    // span
-    // span(className={cx('bdt-launcher-dot', runtime.status === 'connected' && 'is-live')} aria-label={status})
+DevtoolsInterface(open={open} picking={picking} pickTitle={pickTitle} setPickerMode={setPickerMode} inspecting={inspecting} inspectTitle={inspectTitle} setOpen={setOpen})

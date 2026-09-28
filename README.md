@@ -225,7 +225,7 @@ plus three kinds of suggestions:
 
 | Suggestion | Finds | Becomes |
 | --- | --- | --- |
-| **Extract** | A section nested deeper than the depth limit | A component, with props inferred from the bindings it uses |
+| **Extract** | A section whose descendants exceed the depth limit measured from its starting line | A component, with props inferred from the bindings it uses |
 | **Shared shape** | Blocks with the same markup | One component. Differing attribute values, text and conditions become props |
 | **Repeated** | Three or more same-shape siblings, or two larger ones | An `each` over an array, keyed by a unique field or the index |
 
@@ -243,6 +243,19 @@ again on the dev server, which refuses names already used in the file.
 
 The toolbar sets the depth limit, the smallest section worth extracting, and
 the size at which a section defaults to its own file.
+
+### Manual extraction
+
+In **Refactor**, click the first source line (or its line number) of the block
+you want to extract. The overlay highlights the entire parsed block and adds
+a **manual** card with an inferred component name and props. This also works
+for shallow blocks that do not meet the automatic suggestion thresholds.
+
+Rename the component on the card, choose **hoist** or **create**, review the
+diff, and apply. Undo works the same as for automatic refactors. Selecting an
+`if`, `each`, or `switch` includes the complete block and its branches;
+continuation lines, declarations, and existing component calls are not
+starting points. Editing the source clears the selection.
 
 ## Automatic refactors
 
@@ -303,6 +316,21 @@ says why, and you can still copy the code by hand. That happens for:
   different components;
 - components with scoped `style` blocks;
 - moving a section that uses a file-local `component` into a new file.
+
+### Open another project folder
+
+Use the **Open project** folder icon beside the pickers and enter an absolute folder path on the
+machine running the dev server, or click **Browse…** to use its native folder
+chooser (macOS, Windows, or Linux with Zenity/KDialog). The source inspector and refactor panel scan
+that folder for `.btsx` files, skipping generated and dependency directories.
+Changes in the opened folder refresh the overlay automatically. Empty folders
+can be opened too; they show an empty file list.
+
+The selection belongs to the current browser tab and resets on reload. Use
+**Back to running app** to return to the configured project. Live components
+and element picking always inspect the running app; following a component's
+source link switches back to that project. Opening a folder does not start
+its dev server.
 
 ## Configuration
 
@@ -376,8 +404,8 @@ requests from your own page.
 - The browser only names a suggestion. The dev server rebuilds the change from
   the file on disk, and refuses it if the file changed since it was analyzed.
 - Refactors only touch `.btsx` files inside the configured `include`
-  directories, and every resulting file must compile before anything is
-  written.
+  directories, or inside a folder explicitly opened through **Open project…**.
+  Every resulting file must compile before anything is written.
 - Request bodies are capped at 64 KiB, and component names at 80 characters.
 
 > [!WARNING]
