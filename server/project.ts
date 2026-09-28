@@ -14,6 +14,7 @@ import { createOctaneCompiler } from 'octane/compiler/bundler'
 import type {
   AnalyzerSettings,
   ApplyRequest,
+  ContinuationRequest,
   ApplyResult,
   ComponentLocation,
   DiagnosticInfo,
@@ -24,6 +25,7 @@ import type {
   RefactorSuggestion,
   UndoResult,
 } from '../shared/types.js'
+import { continuationEdits, continueProps } from './continuation.js'
 import { entryComponents } from './entry.js'
 import { analyzeDocument, renameSuggestion, type AnalyzeOptions } from './analyze.js'
 import { diffLines } from './diff.js'
@@ -124,6 +126,7 @@ export class BeastProject {
         source: entry.source,
         compiled: { ok: false, error: diagnosticInfo(entry.error!, entry.source) },
         analysis: null,
+        continuationLines: [],
       }
     }
 
@@ -141,6 +144,7 @@ export class BeastProject {
       absolutePath,
       hash: contentHash(entry.source),
       source: entry.source,
+      continuationLines: [...continuationEdits(ast, entry.source).keys()],
       compiled: {
         ok: true,
         tsrx: code,
@@ -179,6 +183,7 @@ export class BeastProject {
     )
     const found = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
     if (found === undefined) throw new RefactorError('That suggestion no longer applies.', 409)
+    if (found.kind === 'continuation') return this.continueProps({ ...request, line: found.startLine })
     const name = request.name?.trim() || found.name
     if (name !== found.name) validateName(name, found, entry.source)
     const suggestion = renameSuggestion(found, name)
@@ -206,6 +211,25 @@ export class BeastProject {
     this.#applied.set(undoId, { summary: plan.summary, changes: plan.changes })
     if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
     return { undoId, component: plan.component, summary: plan.summary, files }
+  }
+
+  continueProps(request: ContinuationRequest): ApplyResult {
+    const absolutePath = this.resolve(request.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    this.invalidate(absolutePath)
+    const entry = this.#compile(absolutePath)
+    if (contentHash(entry.source) !== request.hash) throw new RefactorError('The file changed. Refresh and select the element again.', 409)
+    if (entry.result === null) throw new RefactorError('The file does not compile.', 422)
+    const change = { absolutePath, before: entry.source, after: continueProps(entry.result.ast, entry.source, request.line) }
+    this.#validate(change)
+    const summary = `Continued props on line ${request.line}`
+    const files = [{ path: this.#relative(absolutePath), action: 'edit' as const, ...diffLines(change.before.split('\n'), change.after.split('\n')) }]
+    if (request.dryRun) return { undoId: null, component: '', summary, files }
+    this.#write([change])
+    const undoId = randomUUID()
+    this.#applied.set(undoId, { summary, changes: [change] })
+    if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
+    return { undoId, component: '', summary, files }
   }
 
   /** Restore the files an applied refactor touched, if nobody has edited them since. */

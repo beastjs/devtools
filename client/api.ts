@@ -3,6 +3,7 @@ import {
   SOURCE_CHANGED_EVENT,
   type AnalyzerSettings,
   type ApplyRequest,
+  type ContinuationRequest,
   type ApplyResult,
   type FileReport,
   type ProjectReport,
@@ -80,4 +81,8 @@ export function browseProject(): Promise<{ path: string | null }> {
 
 export function fetchSelection(path: string, line: number, settings: AnalyzerSettings, project = ''): Promise<FileReport> {
   return get('/file', { path, line, ...settings, project })
+}
+
+export function continueProps(request: ContinuationRequest, project = ''): Promise<ApplyResult> {
+  return post<ApplyResult>('/continue-props', request, project)
 }

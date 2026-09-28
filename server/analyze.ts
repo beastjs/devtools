@@ -17,6 +17,7 @@ import type {
   Severity,
   SuggestedProp,
 } from '../shared/types.js'
+import { continuationEdits } from './continuation.js'
 import { attributeValue, replaceSlots, scanSlots, type Slot, type SlotKind, type SlotValue } from './slots.js'
 import { hookCall, identifiersIn, parsePropsParameter, patternNames, topLevelDeclarations } from './source-scan.js'
 import { PROBE_CALL, type ProbeFile, type ProbeResult } from './types.js'
@@ -207,6 +208,30 @@ export function analyzeDocument(
     ...suggestion,
     id: options.selectionLine === undefined ? `s${index + 1}` : `manual:${options.selectionLine}`,
   }))
+
+  if (options.selectionLine === undefined) {
+    const continuations = continuationEdits(document, source)
+    for (const info of hosts.flatMap((host) => host.roots.flatMap(flatten))) {
+      const node = info.node
+      if (node.kind !== 'element' || node.attrs.length < (settings.continuationMinProps ?? 5)) continue
+      const usage = continuations.get(info.start)
+      if (usage === undefined) continue
+      const idAttribute = node.attrs.find((attr) => attr.kind === 'attribute' && attr.name === 'id')
+      const idValue = idAttribute?.kind === 'attribute' ? idAttribute.value : null
+      const elementId = node.id ?? (idValue?.type === 'string' ? idValue.value : idValue?.type === 'expr' ? `{${idValue.code}}` : null)
+      const name = `${node.tag}${!node.isComponent && elementId ? `#${elementId}` : ''}`
+      suggestions.push({
+        id: `continuation:${info.start}`, kind: 'continuation', severity: 'info',
+        host: info.host.name, name, label: name,
+        reason: `${node.attrs.length} inline props. Move each prop onto its own ~ continuation line.`,
+        startLine: info.start, endLine: info.start, lines: 1, depth: info.depth, reach: info.depth,
+        props: [], snippet: usage, usage, usages: [usage], insertBeforeLine: info.start,
+        occurrences: [{ startLine: info.start, endLine: info.start }], references: [], body: usage,
+        propsType: null, propsDeclaration: null, typeImports: [], typesDerived: true, mapping: null,
+        autoApply: { target: 'inline', blocked: null, fileBlocked: null },
+      })
+    }
+  }
 
   const components: ComponentMetrics[] = hosts.map((host) => {
     const all = host.roots.flatMap(flatten)

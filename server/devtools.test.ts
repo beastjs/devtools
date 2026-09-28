@@ -118,3 +118,55 @@ test('manual selections can be renamed, previewed, applied and undone in the sel
   writeFileSync(other.appPath, source + '\n// changed\n')
   expect((await post(`/apply?project=${id}`, request)).status).toBe(409)
 })
+
+test('continuation endpoint previews, writes, rejects stale selections and supports undo', async () => {
+  const { running, other, get, post } = await fixture()
+  const source = 'button(type="button" disabled) Hello\n'
+  writeFileSync(other.appPath, source)
+  const { id } = await (await post('/open-project', { path: other.root })).json()
+  const file = await (await get(`/file?project=${id}&path=src/App.btsx`)).json() as FileReport
+  expect(file.continuationLines).toEqual([1])
+  const request = { path: file.path, hash: file.hash, line: 1, dryRun: true }
+  const preview = await post(`/continue-props?project=${id}`, request)
+  expect(preview.status).toBe(200)
+  expect((await preview.json()).undoId).toBeNull()
+  expect(readFileSync(other.appPath, 'utf8')).toBe(source)
+  expect((await post(`/continue-props?project=${id}`, { ...request, line: 0 })).status).toBe(422)
+  expect((await post(`/continue-props?project=${id}`, { ...request, path: '../Outside.btsx' })).status).toBe(422)
+  const originalRunning = readFileSync(running.appPath, 'utf8')
+  const applied = await post(`/continue-props?project=${id}`, { ...request, dryRun: false })
+  expect(applied.status).toBe(200)
+  const { undoId } = await applied.json()
+  expect(readFileSync(other.appPath, 'utf8')).toBe('button(\n  ~ type="button"\n  ~ disabled\n  ~ ) Hello\n')
+  expect(readFileSync(running.appPath, 'utf8')).toBe(originalRunning)
+  expect((await post(`/continue-props?project=${id}`, { ...request, dryRun: false })).status).toBe(409)
+  expect((await post(`/undo?project=${id}`, { id: undoId })).status).toBe(200)
+  expect(readFileSync(other.appPath, 'utf8')).toBe(source)
+})
+
+test('refactor continuation suggestions honor settings and support preview, apply and undo', async () => {
+  const { running, get, post } = await fixture()
+  const source = 'button(type="button" disabled title="Save" aria-label="Save" tabIndex={0}) Save\n'
+  writeFileSync(running.appPath, source)
+  const file = await (await get('/file?path=src/App.btsx')).json() as FileReport
+  const suggestion = file.analysis!.suggestions.find((item) => item.kind === 'continuation')!
+  expect(suggestion.id).toBe('continuation:1')
+  const above = await (await get('/file?path=src/App.btsx&continuationMinProps=6')).json() as FileReport
+  expect(above.analysis!.suggestions.some((item) => item.kind === 'continuation')).toBe(false)
+  const project = await (await get('/project')).json()
+  expect(project.files[0].suggestions).toBe(file.analysis!.suggestions.length)
+  const request = { path: file.path, hash: file.hash, suggestionId: suggestion.id, settings: DEFAULT_SETTINGS, target: 'inline', dryRun: true }
+  const preview = await post('/apply', request)
+  expect(preview.status).toBe(200)
+  const plan = await preview.json()
+  expect(plan.undoId).toBeNull()
+  expect(plan.files[0].added).toBeGreaterThan(1)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source)
+  const applied = await post('/apply', { ...request, dryRun: false })
+  expect(applied.status).toBe(200)
+  const { undoId } = await applied.json()
+  const after = await (await get('/file?path=src/App.btsx')).json() as FileReport
+  expect(after.analysis!.suggestions.some((item) => item.kind === 'continuation')).toBe(false)
+  expect((await post('/undo', { id: undoId })).status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source)
+})

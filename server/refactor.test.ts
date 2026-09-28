@@ -10,7 +10,7 @@ import { BeastProject } from './project.ts'
 import { planRefactor, RefactorError, type RefactorPlan } from './refactor.ts'
 
 const APP = readFileSync(new URL('../test/fixtures/App.btsx', import.meta.url), 'utf8')
-const SETTINGS: AnalyzerSettings = { depthLimit: 2, minLines: 8, fileLines: 30 }
+const SETTINGS: AnalyzerSettings = { depthLimit: 2, minLines: 8, fileLines: 30, continuationMinProps: 5 }
 const octane = createOctaneCompiler({ root: process.cwd(), environment: 'client', hmr: false, dev: true })
 
 function suggestionsFor(source: string, name: string, settings: Partial<AnalyzerSettings> = {}) {

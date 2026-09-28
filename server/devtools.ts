@@ -176,6 +176,12 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         }
         return send(200, selected.project.apply(request))
       }
+      if (url.pathname === '/continue-props') {
+        return send(200, selected.project.continueProps({
+          path: String(body.path ?? ''), hash: String(body.hash ?? ''),
+          line: Number(body.line), dryRun: body.dryRun !== false,
+        }))
+      }
       if (url.pathname === '/undo') return send(200, selected.project.undo(String(body.id ?? '')))
       return send(404, { error: `Unknown endpoint ${url.pathname}` })
     } catch (error) {
@@ -244,6 +250,7 @@ function readSettings(get: (name: string) => unknown, defaults: AnalyzerSettings
     depthLimit: read('depthLimit', 1, 20),
     minLines: read('minLines', 2, 200),
     fileLines: read('fileLines', 2, 1000),
+    continuationMinProps: read('continuationMinProps', 1, 1000),
   }
 }
 

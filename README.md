@@ -1,4 +1,4 @@
-# Beast DevTools
+# Beast Devtools | @beastjs/devtools
 
 > In-page devtools for [Beast](https://www.npmjs.com/package/beast-tsrx) (BTSX)
 > and [Octane](https://octanejs.dev/) apps.
@@ -499,3 +499,25 @@ Released under the [ISC License](LICENSE).
 ---
 
 *Built for Beast and Octane.*
+
+### Continue inline props
+
+In **BTSX → TSRX**, click a component or element header with inline props,
+then click **Continue props with ~**. Each prop moves onto its own continuation
+line, preserving expressions, inline text and children:
+
+```btsx
+Button(
+  ~ label="Save"
+  ~ onClick={save}
+  ~ )
+```
+
+The change is saved after Beast and Octane validate it. **Undo** restores the
+previous source unless the file has since been edited.
+
+The **Refactor** panel automatically suggests continuation for components and
+elements with **5 or more inline props**. Adjust **Continue at props** to change
+that minimum; it is saved with your browser preferences. Select **Continue props
+with ~** on a suggestion to review its diff, then **Apply changes** to save it.
+Already continued headers are excluded from automatic suggestions.
