@@ -1,4 +1,5 @@
-import { COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
+import { fetchFile, saveElementEdit, undoRefactor } from './api.ts'
+import { DEFAULT_SETTINGS, type ElementEditRequest, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
 
 export type ElementPropertyGroup = 'styles' | 'attributes' | 'properties'
 export interface ElementProperty {
@@ -11,8 +12,8 @@ export interface ElementProperty {
 export interface StyleEdit {
   /** Applies CSS declarations to the element right away. */
   set(declarations: Readonly<Record<string, string>>): void
-  /** Keeps the changes as one undo step. */
-  commit(): void
+  /** Saves the changes to source as one undo step. */
+  commit(): Promise<void>
   /** Restores the inline style from before the edit. */
   cancel(): void
 }
@@ -30,7 +31,7 @@ export interface ElementSnapshot {
 
 const EDITABLE_PROPERTIES = new Set([
   'value', 'checked', 'selected', 'disabled', 'hidden', 'readOnly', 'required', 'multiple', 'tabIndex', 'title', 'id', 'className', 'placeholder', 'textContent',
-  'innerText', 'lang', 'dir', 'draggable', 'spellcheck', 'contentEditable', 'inert', 'autofocus', 'translate', 'accessKey', 'open', 'indeterminate',
+  'innerText', 'lang', 'dir', 'draggable', 'spellcheck', 'contentEditable', 'inert', 'autofocus', 'translate', 'accessKey', 'open',
   'name', 'type', 'href', 'src', 'alt', 'min', 'max', 'step', 'pattern', 'maxLength', 'minLength',
 ])
 // Replacing these drops element children, so only offer them on text-only elements.
@@ -40,6 +41,15 @@ export const COMMON_STYLES = new Set(['display', 'position', 'width', 'height', 
 
 export function elementLabel(element: Element): string {
   return `${element.localName}${element.id ? `#${element.id}` : ''}`
+}
+
+/**
+ * Stable identity for a capture: captures hold only plain data in a fixed
+ * shape, so identical elements stringify identically. The Elements panel
+ * compares this key to skip re-rendering on idle refresh ticks.
+ */
+export function snapshotKey(snapshot: ElementSnapshot | null): string {
+  return snapshot === null ? 'null' : JSON.stringify(snapshot)
 }
 
 function inlineStyle(element: Element): CSSStyleDeclaration {
@@ -101,15 +111,89 @@ export function captureElement(element: Element): ElementSnapshot {
   }
 }
 
-/** Live edits belong to the selected DOM node, and survive panel/tab changes. */
+/** Source-backed edits survive reloads; the selected node is rebound after HMR. */
+const MAX_UNDO_STEPS = 50
+
 export class ElementInspection {
-  readonly element: Element
+  #element: Element
+  readonly #source: string | null
+  readonly #index: number
+  readonly #ready: Promise<void>
+  #hash = ''
+  #version = 0
+  #saved: Array<{ id: string; hash: string }> = []
+  #listeners = new Set<() => void>()
+  saving = false
+  error: string | null = null
+  subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener)
+    return () => { this.#listeners.delete(listener) }
+  }
+  #notify(): void { for (const listener of this.#listeners) listener() }
+  get element(): Element {
+    if (!this.#element.isConnected && this.#source) {
+      const matches = [...document.querySelectorAll(`[${SOURCE_ATTRIBUTE}]`)].filter((el) => el.getAttribute(SOURCE_ATTRIBUTE) === this.#source)
+      this.#element = matches[this.#index] ?? this.#element
+    }
+    return this.#element
+  }
   readonly #undo: Array<() => void> = []
-  constructor(element: Element) { this.element = element }
-  get undoCount(): number { return this.#undo.length }
+  constructor(element: Element) {
+    this.#element = element
+    this.#source = element.getAttribute(SOURCE_ATTRIBUTE)
+    this.#index = [...document.querySelectorAll(`[${SOURCE_ATTRIBUTE}]`)].filter((el) => el.getAttribute(SOURCE_ATTRIBUTE) === this.#source).indexOf(element)
+    const location = this.#location()
+    this.#ready = location ? fetchFile(location.path, DEFAULT_SETTINGS).then((report) => { this.#hash = report.hash }).catch((error) => {
+      this.error = error instanceof Error ? error.message : String(error)
+      this.#notify()
+    }) : Promise.resolve()
+  }
+  #location(): { path: string; line: number; column: number } | null {
+    const match = /^(.+):(\d+):(\d+)$/.exec(this.#source ?? '')
+    return match ? { path: match[1]!, line: Number(match[2]), column: Number(match[3]) } : null
+  }
+  #check(): void {
+    if (this.saving) throw new Error('Wait for the current edit to finish saving.')
+    if (!this.#source) throw new Error('This element has no Beast source location. Enable source tagging to save edits.')
+  }
+  async #save(change: Pick<ElementEditRequest, 'group' | 'name' | 'value' | 'declarations' | 'cssText'>): Promise<void> {
+    await this.#ready
+    const location = this.#location()
+    if (!location || !this.#hash) throw new Error(this.error ?? 'The source file could not be loaded. Pick the element again.')
+    const previous = this.#hash
+    const result = await saveElementEdit({ ...location, hash: previous, tag: this.element.localName, ...change })
+    this.#hash = result.hash
+    this.#saved.push({ id: result.undoId, hash: previous })
+    if (this.#saved.length > MAX_UNDO_STEPS) this.#saved.shift()
+    if (this.#undo.length > MAX_UNDO_STEPS) this.#undo.shift()
+  }
+  async edit(group: ElementPropertyGroup, name: string, value: string | null): Promise<void> {
+    this.#check()
+    const version = this.#version
+    this.#editLive(group, name, value)
+    if (this.#version === version) return
+    this.saving = true
+    this.error = null
+    this.#notify()
+    try {
+      await this.#save({ group, name, value: group === 'properties' ? Reflect.get(this.element, name) as string | number | boolean : value,
+        ...(group === 'styles' ? { declarations: { [name]: value }, cssText: inlineStyle(this.element).cssText } : {}) })
+    } catch (error) {
+      this.#undo.pop()?.()
+      this.error = error instanceof Error ? error.message : String(error)
+      throw error
+    } finally { this.saving = false; this.#notify() }
+  }
+  get canSave(): boolean { return this.#source !== null }
+  get undoCount(): number { return this.#saved.length }
   capture(): ElementSnapshot { return captureElement(this.element) }
 
-  edit(group: ElementPropertyGroup, name: string, value: string | null): void {
+  #pushUndo(step: () => void): void {
+    this.#version++
+    this.#undo.push(step)
+  }
+
+  #editLive(group: ElementPropertyGroup, name: string, value: string | null): void {
     const element = this.element
     if (!element.isConnected) throw new Error('This element is no longer on the page. Pick it again.')
     if (group === 'styles') {
@@ -123,7 +207,7 @@ export class ElementInspection {
         style.setProperty(name, next, important ? 'important' : '')
       }
       if (element.getAttribute('style') === oldStyle) return
-      this.#undo.push(() => {
+      this.#pushUndo(() => {
         // Restore the complete declaration, including longhands affected by a shorthand.
         if (oldStyle === null) element.removeAttribute('style')
         else element.setAttribute('style', oldStyle)
@@ -134,7 +218,7 @@ export class ElementInspection {
       if (before === value) return
       if (value === null) element.removeAttribute(name)
       else element.setAttribute(name, value)
-      this.#undo.push(() => { if (before === null) element.removeAttribute(name); else element.setAttribute(name, before) })
+      this.#pushUndo(() => { if (before === null) element.removeAttribute(name); else element.setAttribute(name, before) })
     } else {
       const property = this.capture().properties.find((entry) => entry.name === name)
       if (!property?.editable || value === null) throw new Error('This DOM property is read-only.')
@@ -144,12 +228,14 @@ export class ElementInspection {
       const before = Reflect.get(element, name)
       if (Object.is(before, next)) return
       if (!Reflect.set(element, name, next)) throw new Error('This DOM property could not be changed.')
-      this.#undo.push(() => { Reflect.set(element, name, before) })
+      this.#pushUndo(() => { Reflect.set(element, name, before) })
     }
   }
 
   /** Live inline-style changes, such as a drag, that land as one undo step. */
   beginStyleEdit(): StyleEdit {
+    this.#check()
+    const declarations: Record<string, string> = {}
     const element = this.element
     if (!element.isConnected) throw new Error('This element is no longer on the page. Pick it again.')
     const style = inlineStyle(element)
@@ -160,13 +246,25 @@ export class ElementInspection {
     }
     let done = false
     return {
-      set: (declarations) => {
-        if (!done) for (const [name, value] of Object.entries(declarations)) style.setProperty(name, value)
+      set: (values) => {
+        if (!done) for (const [name, value] of Object.entries(values)) { declarations[name] = value; style.setProperty(name, value) }
       },
-      commit: () => {
+      commit: async () => {
         if (done) return
         done = true
-        if (element.getAttribute('style') !== before) this.#undo.push(restore)
+        if (element.getAttribute('style') === before) return
+        this.saving = true
+        this.error = null
+        this.#notify()
+        try {
+          await this.#save({ group: 'styles', name: '', value: null, declarations, cssText: style.cssText })
+          this.#pushUndo(restore)
+          if (this.#undo.length > MAX_UNDO_STEPS) this.#undo.shift()
+        } catch (error) {
+          restore()
+          this.error = error instanceof Error ? error.message : String(error)
+          throw error
+        } finally { this.saving = false; this.#notify() }
       },
       cancel: () => {
         if (done) return
@@ -176,9 +274,21 @@ export class ElementInspection {
     }
   }
 
-  undo(): void {
-    if (!this.element.isConnected) throw new Error('This element is no longer on the page. Pick it again.')
-    const undo = this.#undo.at(-1)
-    if (undo) { undo(); this.#undo.pop() }
+  async undo(): Promise<void> {
+    this.#check()
+    const saved = this.#saved.at(-1)
+    if (!saved) return
+    this.saving = true
+    this.error = null
+    this.#notify()
+    try {
+      await undoRefactor(saved.id)
+      this.#hash = saved.hash
+      this.#saved.pop()
+      this.#undo.pop()?.()
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error)
+      throw error
+    } finally { this.saving = false; this.#notify() }
   }
 }

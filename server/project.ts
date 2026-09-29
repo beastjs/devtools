@@ -13,6 +13,8 @@ import {
 import { createOctaneCompiler } from 'octane/compiler/bundler'
 import type {
   AnalyzerSettings,
+  ElementEditRequest,
+  ElementEditResult,
   ApplyRequest,
   ContinuationRequest,
   ApplyResult,
@@ -25,6 +27,7 @@ import type {
   RefactorSuggestion,
   UndoResult,
 } from '../shared/types.js'
+import { editElement } from './element-edits.js'
 import { continuationEdits, continueProps } from './continuation.js'
 import { entryComponents } from './entry.js'
 import { analyzeDocument, renameSuggestion, type AnalyzeOptions } from './analyze.js'
@@ -230,6 +233,23 @@ export class BeastProject {
     this.#applied.set(undoId, { summary, changes: [change] })
     if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
     return { undoId, component: '', summary, files }
+  }
+
+  editElement(request: ElementEditRequest): ElementEditResult {
+    const absolutePath = this.resolve(request.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    this.invalidate(absolutePath)
+    const entry = this.#compile(absolutePath)
+    if (contentHash(entry.source) !== request.hash) throw new RefactorError('The source file changed. Pick the element again before editing.', 409)
+    if (entry.result === null) throw new RefactorError('The source file does not compile.', 422)
+    const after = editElement(entry.result.ast, entry.source, request)
+    const change = { absolutePath, before: entry.source, after }
+    this.#validate(change)
+    this.#write([change])
+    const undoId = randomUUID()
+    this.#applied.set(undoId, { summary: 'Element edit', changes: [change] })
+    if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
+    return { hash: contentHash(after), undoId }
   }
 
   /** Restore the files an applied refactor touched, if nobody has edited them since. */

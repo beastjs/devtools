@@ -59,7 +59,7 @@ export function canResize(element: Pick<Element, 'localName' | 'namespaceURI'>, 
 
 /** Shows the outline and side handles until the returned cleanup runs. */
 export function startLayoutEditor(inspection: ElementInspection, onCommit: () => void): () => void {
-  const element = inspection.element
+  if (!inspection.canSave) return () => {}
   const frame = document.createElement('div')
   frame.className = 'bdt-layout-frame'
   const size = document.createElement('span')
@@ -80,6 +80,7 @@ export function startLayoutEditor(inspection: ElementInspection, onCommit: () =>
 
   const place = () => {
     frameRequest = requestAnimationFrame(place)
+    const element = inspection.element
     const rect = element.getBoundingClientRect()
     const display = element.isConnected ? getComputedStyle(element).display : 'none'
     const visible = element.isConnected && display !== 'none'
@@ -89,10 +90,10 @@ export function startLayoutEditor(inspection: ElementInspection, onCommit: () =>
     frame.style.transform = `translate(${rect.left}px, ${rect.top}px)`
     frame.style.width = `${rect.width}px`
     frame.style.height = `${rect.height}px`
-    size.textContent = `${Number(rect.width.toFixed(1))} × ${Number(rect.height.toFixed(1))}`
+    size.textContent = inspection.error ?? (inspection.saving ? 'Saving…' : `${Number(rect.width.toFixed(1))} × ${Number(rect.height.toFixed(1))}`)
   }
 
-  const finish = (keep: boolean) => {
+  const finish = (keep: boolean, notify = true) => {
     if (drag === null) return
     const { edit, handle, pointer } = drag
     drag = null
@@ -101,9 +102,9 @@ export function startLayoutEditor(inspection: ElementInspection, onCommit: () =>
     frame.classList.remove('is-dragging')
     delete document.documentElement.dataset.bdtLayoutEdge
     window.removeEventListener('keydown', onKeyDown, true)
-    if (keep) edit.commit()
+    if (keep) void edit.commit().catch(() => {}).finally(onCommit)
     else edit.cancel()
-    onCommit()
+    if (notify) onCommit()
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -114,6 +115,7 @@ export function startLayoutEditor(inspection: ElementInspection, onCommit: () =>
   }
 
   const begin = (event: PointerEvent, edge: Edge, handle: HTMLElement) => {
+    const element = inspection.element
     if (event.button !== 0 || drag !== null || !element.isConnected) return
     const computed = getComputedStyle(element)
     if (!canResize(element, computed.display)) return
@@ -149,7 +151,10 @@ export function startLayoutEditor(inspection: ElementInspection, onCommit: () =>
   place()
   return () => {
     cancelAnimationFrame(frameRequest)
-    finish(true)
+    // Tearing down (unmount or element switch) reverts a partial drag instead
+    // of committing it, and stays silent: the panel is gone, so notifying it
+    // would setState on an unmounted component.
+    finish(false, false)
     frame.remove()
   }
 }

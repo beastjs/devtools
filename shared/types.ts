@@ -259,3 +259,21 @@ export interface ApplyResult {
 export interface UndoResult {
   summary: string
 }
+
+/** A source-backed edit made by the Elements panel or layout handles. */
+export interface ElementEditRequest {
+  path: string
+  hash: string
+  line: number
+  column: number
+  tag: string
+  group: 'styles' | 'attributes' | 'properties'
+  name: string
+  value: string | number | boolean | null
+  declarations?: Record<string, string | null>
+  cssText?: string
+}
+export interface ElementEditResult {
+  hash: string
+  undoId: string
+}

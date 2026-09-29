@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'octane'
+import { useEffect, useRef, useState } from 'octane'
 import { groupAttributes, groupProperties, groupStyles, type ElementSection } from './element-groups.ts'
-import { COMMON_STYLES, type ElementInspection, type ElementProperty, type ElementPropertyGroup } from './element-inspector.ts'
-import { startLayoutEditor } from './element-layout.ts'
+import { COMMON_STYLES, snapshotKey, type ElementInspection, type ElementProperty, type ElementPropertyGroup } from './element-inspector.ts'
 import { cx } from './util.ts'
 
 module
@@ -70,44 +69,55 @@ setup
   const [group, setGroup] = useState<ElementPropertyGroup>('styles');
   const [query, setQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newValue, setNewValue] = useState('');
   const [undoCount, setUndoCount] = useState(inspection?.undoCount ?? 0);
+  const lastKey = useRef<string | null>(null);
   const refresh = () => {
-    setSnapshot(inspection?.capture() ?? null);
+    setSaving(inspection?.saving ?? false);
+    setUndoCount(inspection?.undoCount ?? 0);
+    const next = inspection?.capture() ?? null;
+    const key = snapshotKey(next);
+    // Captures are fresh objects every time; only publish when the content
+    // actually changed, so idle ticks skip the re-render entirely.
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+    setSnapshot(next);
     setUndoCount(inspection?.undoCount ?? 0);
   };
   useEffect(() => {
+    // A new inspection starts unmatched, even if its content equals the last one.
+    lastKey.current = null;
     refresh();
-    setError(null);
+    setError(inspection?.error ?? null);
     setQuery('');
     if (!inspection) return;
     // Attributes, layout and runtime values can change independently of DevTools.
-    const timer = window.setInterval(refresh, 1000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => { if (!document.hidden) refresh(); }, 1000);
+    const unsubscribe = inspection.subscribe(() => { setError(inspection.error); refresh(); });
+    return () => { window.clearInterval(timer); unsubscribe(); };
   }, [inspection]);
-  // Outline the element on the page, with side handles to resize it.
-  useEffect(() => inspection ? startLayoutEditor(inspection, refresh) : undefined, [inspection]);
-  const edit = (name: string, value: string | null) => {
+  const edit = async (name: string, value: string | null) => {
     if (!inspection) return;
     try {
-      inspection.edit(group, name, value);
+      await inspection.edit(group, name, value);
       setError(null);
       refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };
-  const undo = () => {
+  const undo = async () => {
     if (!inspection) return;
-    try { inspection.undo(); setError(null); refresh(); }
+    try { await inspection.undo(); setError(null); refresh(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };
   const chooseGroup = (next: ElementPropertyGroup) => { setGroup(next); setQuery(''); setNewName(''); setNewValue(''); setError(null); };
-  const add = (event: SubmitEvent) => {
+  const add = async (event: SubmitEvent) => {
     event.preventDefault();
     if (!inspection || !newName.trim()) return;
     try {
-      inspection.edit(group, newName.trim(), newValue);
+      await inspection.edit(group, newName.trim(), newValue);
       setNewName(''); setNewValue(''); setError(null); refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };
@@ -132,14 +142,16 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
   else
     fragment
       .bdt-toolbar.bdt-element-toolbar
-        .bdt-element-identity
-          strong.bdt-mono #{snapshot.label}
-          span.bdt-dim #{`${Number(snapshot.width.toFixed(1))} × ${Number(snapshot.height.toFixed(1))} px${snapshot.component ? ' · ' + snapshot.component : ''}`}
+        .bdt-element-row
+          strong.bdt-element-identity #{snapshot.label}
+          span.bdt-mono.bdt-dim #{`${Number(snapshot.width.toFixed(1))} × ${Number(snapshot.height.toFixed(1))} px${snapshot.component ? ' · ' + snapshot.component : ''}`}
         .bdt-spacer
-        span.bdt-element-live Live edits
-        button.bdt-button(type="button" disabled={undoCount === 0 || !snapshot.connected} onClick={undo}) Undo#{undoCount > 0 ? ' · ' + undoCount : ''}
+        span.bdt-element-live #{saving ? 'Saving…' : error ? 'Not saved' : 'Saves to source'}
+        button.bdt-button(type="button" disabled={saving || undoCount === 0} onClick={undo}) Undo#{undoCount > 0 ? ' · ' + undoCount : ''}
         button.bdt-button(type="button" onClick={refresh}) Refresh
         button.bdt-button-critical(type="button" onClick={onPick}) Pick another
+      if !snapshot.source
+        p.bdt-element-notice(role="status") This element has no Beast source location. Enable source tagging to save edits.
       if !snapshot.connected
         p.bdt-element-notice(role="status") This element was removed from the page. Pick it again to continue editing.
       if error !== null
@@ -150,7 +162,7 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
             button(type="button" className={cx('bdt-element-group', group === item.id && 'is-active')} aria-pressed={group === item.id} onClick={() => chooseGroup(item.id)})
               span #{item.label}
               span.bdt-dim #{snapshot[item.id].length}
-          p.bdt-element-note Changes apply to the live page. Drag the outline’s sides on the page to resize. Reloading restores the app’s original values.
+          p.bdt-element-note Edits save to the element’s .btsx file, including layout drags. Changes affect every instance rendered by this source element. The outline stays available when the panel is closed.
         .bdt-element-content
           .bdt-element-filter
             input.bdt-input(type="search" aria-label="Filter element properties" placeholder="Find a property or value…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
@@ -178,9 +190,9 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
                 if isOpen(category)
                   div(className={cx('bdt-element-grid', category.columns === 2 && 'is-split')})
                     each property in category.properties key `${group}:${property.name}`
-                      ElementPropertyRow(property={property} disabled={!snapshot.connected} removable={group === 'attributes' || (group === 'styles' && !!property.inline)} onCommit={edit})
+                      ElementPropertyRow(property={property} disabled={saving || !snapshot.source || !snapshot.connected} removable={group === 'attributes' || (group === 'styles' && !!property.inline)} onCommit={edit})
           if group !== 'properties'
             form.bdt-element-add(onSubmit={add})
-              input.bdt-input(aria-label={group === 'styles' ? 'New CSS property' : 'New attribute'} placeholder={group === 'styles' ? 'CSS property' : 'Attribute name'} value={newName} disabled={!snapshot.connected} onInput={(event) => setNewName(event.currentTarget.value)})
-              input.bdt-input(aria-label="New property value" placeholder="Value" value={newValue} disabled={!snapshot.connected} onInput={(event) => setNewValue(event.currentTarget.value)})
-              button.bdt-button(type="submit" disabled={!snapshot.connected || !newName.trim()}) Add
+              input.bdt-input(aria-label={group === 'styles' ? 'New CSS property' : 'New attribute'} placeholder={group === 'styles' ? 'CSS property' : 'Attribute name'} value={newName} disabled={saving || !snapshot.source || !snapshot.connected} onInput={(event) => setNewName(event.currentTarget.value)})
+              input.bdt-input(aria-label="New property value" placeholder="Value" value={newValue} disabled={saving || !snapshot.source || !snapshot.connected} onInput={(event) => setNewValue(event.currentTarget.value)})
+              button.bdt-button(type="submit" disabled={saving || !snapshot.source || !snapshot.connected || !newName.trim()}) Add

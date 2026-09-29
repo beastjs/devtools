@@ -170,3 +170,21 @@ test('refactor continuation suggestions honor settings and support preview, appl
   expect((await post('/undo', { id: undoId })).status).toBe(200)
   expect(readFileSync(running.appPath, 'utf8')).toBe(source)
 })
+
+test('element edits persist through the JSON endpoint with conflict checks and undo', async () => {
+  const { running, get, post } = await fixture()
+  writeFileSync(running.appPath, 'div Hello\n')
+  const file = await (await get('/file?path=src/App.btsx')).json() as FileReport
+  const request = { path: file.path, hash: file.hash, line: 1, column: 1, tag: 'div', group: 'attributes', name: 'title', value: 'Saved' }
+  expect((await post('/element-edit', request, { Origin: 'http://other.example' })).status).toBe(403)
+  expect((await post('/element-edit', { ...request, group: 'unknown' })).status).toBe(422)
+  expect((await post('/element-edit', { ...request, declarations: { width: {} } })).status).toBe(422)
+  const result = await post('/element-edit', request)
+  expect(result.status).toBe(200)
+  const { hash, undoId } = await result.json()
+  expect(hash).not.toBe(file.hash)
+  expect(readFileSync(running.appPath, 'utf8')).toContain('title={"Saved"}')
+  expect((await post('/element-edit', request)).status).toBe(409)
+  expect((await post('/undo', { id: undoId })).status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toBe('div Hello\n')
+})

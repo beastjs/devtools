@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'octane'
-import type { AnalyzerSettings, FileReport, ProjectReport } from '../shared/types.ts'
+import type { AnalyzerSettings, ComponentLocation, FileReport, FileSummary, ProjectReport } from '../shared/types.ts'
 import { BeastLogo, ComponentFinderIcon, ElementPickerIcon } from './Icons.btsx'
 import ComponentsPanel from './ComponentsPanel.btsx'
 import ElementsPanel from './ElementsPanel.btsx'
+import { startLayoutEditor } from './element-layout.ts'
 import { ElementInspection } from './element-inspector.ts'
 import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
@@ -29,6 +30,17 @@ module
   function isElementPickerShortcut(event: KeyboardEvent): boolean {
     return event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyE'
   }
+
+  /**
+   * Shared empty props. `?? []` inline would mint a fresh array identity on
+   * every render and defeat the memoized tree/file derivations downstream.
+   */
+  const EMPTY_COMPONENTS: readonly ComponentLocation[] = []
+  const EMPTY_STRINGS: readonly string[] = []
+  const EMPTY_FILES: readonly FileSummary[] = []
+
+  /** Settings inputs emit per keystroke; server fetches wait for a pause. */
+  const SETTINGS_DEBOUNCE_MS = 300
 
 module
   interface DevtoolsInterfaceProps {
@@ -62,6 +74,14 @@ setup
   const [showControlFlow, setShowControlFlow] = useState(initial.showControlFlow);
   const [componentsView, setComponentsView] = useState(initial.componentsView);
   const [settings, setSettings] = useState<AnalyzerSettings>(initial.settings);
+  // Fetches run against the settled value, so typing in a settings field
+  // fires one refresh instead of one per keystroke.
+  const [debouncedSettings, setDebouncedSettings] = useState<AnalyzerSettings>(initial.settings);
+  useEffect(() => {
+    if (settings === debouncedSettings) return;
+    const timer = window.setTimeout(() => setDebouncedSettings(settings), SETTINGS_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [settings]);
   const [focus, setFocus] = useState<ScrollTarget | null>(null);
   const [revision, setRevision] = useState(0);
   const [projectId, setProjectId] = useState('');
@@ -125,7 +145,7 @@ setup
     if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
   };
 
-  // Both tools end on selection; Element Picker opens the live editor.
+  // Picking selects the editor tab without changing whether the dock is open.
   useEffect(() => {
     if (activeElementTool === null) return;
     if (activeElementTool === 'element-picker') return startElementPicker(
@@ -135,7 +155,6 @@ setup
         setElementInspection(inspection);
         setActiveElementTool(null);
         setTab('elements');
-        setOpen(true);
       },
       () => setActiveElementTool(null),
     );
@@ -148,11 +167,15 @@ setup
     );
   }, [activeElementTool]);
 
+  // Layout handles remain usable with the dock closed, and pause while picking.
+  useEffect(() => elementInspection && activeElementTool === null
+    ? startLayoutEditor(elementInspection, () => {}) : undefined, [elementInspection, activeElementTool]);
+
   // The project list refreshes whenever a .btsx file changes on disk.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([fetchProject(settings, projectId), fetchProject(settings)]).then(
+    Promise.all([fetchProject(debouncedSettings, projectId), fetchProject(debouncedSettings)]).then(
       ([next, running]) => {
         if (cancelled || generation !== projectGeneration.current) return;
         setRuntimeProject(running);
@@ -167,12 +190,12 @@ setup
     return () => {
       cancelled = true;
     };
-  }, [open, revision, settings, projectId]);
+  }, [open, revision, debouncedSettings, projectId]);
 
   useEffect(() => {
     if (!open || file === null) return;
     let cancelled = false;
-    fetchFile(file, settings, projectId).then(
+    fetchFile(file, debouncedSettings, projectId).then(
       (next) => {
         if (cancelled || generation !== projectGeneration.current) return;
         setReport(next);
@@ -185,7 +208,7 @@ setup
     return () => {
       cancelled = true;
     };
-  }, [open, file, revision, settings, projectId]);
+  }, [open, file, revision, debouncedSettings, projectId]);
 
   const selectProject = (id: string) => {
     projectGeneration.current += 1;
@@ -225,13 +248,28 @@ if open || docked
       ~ aria-label="Resize Beast DevTools"
       ~ onPointerDown={(event) => startResize(event, height, setHeight)}
       ~ )
-    Topbar(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} project={project} projectId={projectId} selectProject={selectProject} runtime={runtime} status={status} setOpen={setOpen})
+    Topbar(
+      ~ tab={tab}
+      ~ setTab={setTab}
+      ~ suggestionCount={suggestionCount}
+      ~ componentFinderActive={componentFinderActive}
+      ~ componentFinderTitle={componentFinderTitle}
+      ~ setActiveElementTool={setActiveElementTool}
+      ~ elementPickerActive={elementPickerActive}
+      ~ elementPickerTitle={elementPickerTitle}
+      ~ project={project}
+      ~ projectId={projectId}
+      ~ selectProject={selectProject}
+      ~ runtime={runtime}
+      ~ status={status}
+      ~ setOpen={setOpen}
+      ~ )
     div.bdt-body(role="tabpanel" aria-label={TABS.find((item) => item.id === tab)?.label})
       switch tab
         case 'components'
           ComponentsPanel(
-            ~ components={runtimeProject?.components ?? []}
-            ~ entryComponents={runtimeProject?.entryComponents ?? []}
+            ~ components={runtimeProject?.components ?? EMPTY_COMPONENTS}
+            ~ entryComponents={runtimeProject?.entryComponents ?? EMPTY_STRINGS}
             ~ view={componentsView}
             ~ onViewChange={setComponentsView}
             ~ showControlFlow={showControlFlow}
@@ -247,7 +285,7 @@ if open || docked
             ~ projectId={projectId}
             ~ recent={recent}
             ~ onRecentChange={setRecent}
-            ~ files={project?.files ?? []}
+            ~ files={project?.files ?? EMPTY_FILES}
             ~ file={file}
             ~ report={report}
             ~ loadError={loadError}
@@ -258,7 +296,7 @@ if open || docked
           RefactorPanel(
             ~ key={projectId}
             ~ projectId={projectId}
-            ~ files={project?.files ?? []}
+            ~ files={project?.files ?? EMPTY_FILES}
             ~ file={file}
             ~ report={report}
             ~ loadError={loadError}
