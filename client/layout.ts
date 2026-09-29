@@ -44,11 +44,11 @@ const SPLITS: Record<SplitId, SplitSpec> = {
     measure: (x, width) => clamp(x / width, MIN_PANE / width, 1 - MIN_PANE / width),
     format: share,
   },
-  // Suggestions next to the depth-annotated source.
+  // File list and suggestions next to the depth-annotated source.
   refactor: {
     variable: '--bdt-refactor-share',
     container: '.bdt-refactor',
-    measure: (x, width) => clamp(x / width, 260 / width, 1 - MIN_PANE / width),
+    measure: (x, width) => clamp(x / width, 480 / width, 1 - MIN_PANE / width),
     format: share,
   },
 }
