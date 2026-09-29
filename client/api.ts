@@ -86,3 +86,8 @@ export function fetchSelection(path: string, line: number, settings: AnalyzerSet
 export function continueProps(request: ContinuationRequest, project = ''): Promise<ApplyResult> {
   return post<ApplyResult>('/continue-props', request, project)
 }
+
+export function saveElementEdit(request: import('../shared/types.ts').ElementEditRequest): Promise<import('../shared/types.ts').ElementEditResult> {
+  // Picked DOM elements always belong to the running app, not a browsed project.
+  return post('/element-edit', request)
+}

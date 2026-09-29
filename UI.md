@@ -3,9 +3,9 @@ The launcher markup is in [client/BeastDevtools.btsx](client/BeastDevtools.btsx)
 **Tools**
 
 - **Component Finder** identifies the component that owns an element and its source file. Click to open the source in your editor. Shortcut: Alt+Shift+C.
-- **Element Picker** shows a compact tag/ID and dimensions preview. Clicking opens the Elements panel for live style, attribute and DOM-property edits with undo. Shortcut: Alt+Shift+E.
+- **Element Picker** shows a compact tag/ID and dimensions preview. Clicking selects an element for source-backed style, attribute and DOM-property edits with undo. It switches to the Elements tab without opening a closed panel, so layout handles can be used on the unobstructed page. Shortcut: Alt+Shift+E.
 
-[client/ElementsPanel.btsx](client/ElementsPanel.btsx) contains the live editor; [client/element-inspector.ts](client/element-inspector.ts) captures properties and manages edits and undo. [client/element-groups.ts](client/element-groups.ts) sorts styles and DOM properties into the panel's category groups. [client/element-layout.ts](client/element-layout.ts) draws the open element's outline and side handles for resizing it on the page.
+[client/ElementsPanel.btsx](client/ElementsPanel.btsx) contains the source-backed editor; [client/element-inspector.ts](client/element-inspector.ts) captures properties and saves edits through the Elements API, with file-backed undo. Styles and layout drags update inline styles in the owning `.btsx` element. Untagged elements and runtime-only properties remain read-only; computed style expressions that cannot be safely patched report an error instead of claiming to save. [client/element-groups.ts](client/element-groups.ts) sorts styles and DOM properties into the panel's category groups. [client/element-layout.ts](client/element-layout.ts) draws the open element's outline and side handles for resizing it on the page.
 
 Both tools appear in the launcher and panel toolbar. Only one is active at a time; Escape exits it.
 

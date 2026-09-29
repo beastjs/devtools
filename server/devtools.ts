@@ -184,6 +184,21 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           line: Number(body.line), dryRun: body.dryRun !== false,
         }))
       }
+      if (url.pathname === '/element-edit') {
+        if (!['styles', 'attributes', 'properties'].includes(String(body.group)) ||
+          !Number.isSafeInteger(body.line) || Number(body.line) < 1 || !Number.isSafeInteger(body.column) || Number(body.column) < 1 ||
+          !['string', 'number', 'boolean'].includes(typeof body.value) && body.value !== null ||
+          body.declarations !== undefined && (body.declarations === null || typeof body.declarations !== 'object' || Array.isArray(body.declarations) || Object.values(body.declarations).some((value) => value !== null && typeof value !== 'string'))) {
+          return send(422, { error: 'Invalid element edit.' })
+        }
+        return send(200, selected.project.editElement({
+          path: String(body.path ?? ''), hash: String(body.hash ?? ''), line: Number(body.line), column: Number(body.column),
+          tag: String(body.tag ?? ''), group: body.group as 'styles' | 'attributes' | 'properties',
+          name: String(body.name ?? ''), value: body.value as string | number | boolean | null,
+          declarations: body.declarations as Record<string, string | null> | undefined,
+          cssText: typeof body.cssText === 'string' ? body.cssText : undefined,
+        }))
+      }
       if (url.pathname === '/undo') return send(200, selected.project.undo(String(body.id ?? '')))
       return send(404, { error: `Unknown endpoint ${url.pathname}` })
     } catch (error) {
