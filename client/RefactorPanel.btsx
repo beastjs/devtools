@@ -217,7 +217,6 @@ setup
     }
   };
 
-FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
 .bdt-pane
   .bdt-toolbar
     span.bdt-toolbar-title.bdt-mono
@@ -266,148 +265,153 @@ FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
       if undoError === null
         button.bdt-button(type="button" onClick={undo}) Undo
       button.bdt-icon-button(type="button" aria-label="Dismiss" onClick={() => { setUndoError(null); onRecentChange(null); }}) ×
-  if loadError !== null && current === null
-    .bdt-empty
-      p Could not analyze #{file ?? 'the file'}: #{loadError}
-  elseif current === null
-    .bdt-empty
-      p #{files.length === 0 ? 'No .btsx files found under the configured include directories.' : 'Analyzing…'}
-  elseif analysis === null
-    .bdt-empty
-      .bdt-empty-card
-        p.bdt-empty-title This file does not compile
-        p Fix the error shown in BTSX → TSRX to analyze its structure.
+  if current === null || analysis === null
+    .bdt-refactor-fallback
+      FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
+      if loadError !== null && current === null
+        .bdt-empty
+          p Could not analyze #{file ?? 'the file'}: #{loadError}
+      elseif current === null
+        .bdt-empty
+          p #{files.length === 0 ? 'No .btsx files found under the configured include directories.' : 'Analyzing…'}
+      elseif analysis === null
+        .bdt-empty
+          .bdt-empty-card
+            p.bdt-empty-title This file does not compile
+            p Fix the error shown in BTSX → TSRX to analyze its structure.
   else
-    fragment
-      .bdt-metrics
-        .bdt-metric(className={analysis.maxDepth > settings.depthLimit && 'metric-alert'})
-          span(className={cx('bdt-metric-value', analysis.maxDepth > settings.depthLimit && 'is-over')}) #{analysis.maxDepth}
-          span.bdt-metric-label Max depth
-        .bdt-metric
-          span.bdt-metric-value #{analysis.averageDepth}
-          span.bdt-metric-label Avg depth
-        .bdt-metric(className={analysis.deepLines > 0 && 'metric-alert'})
-          span(className={cx('bdt-metric-value', analysis.deepLines > 0 && 'is-over')}) #{analysis.deepLines}
-          span.bdt-metric-label Lines over #{settings.depthLimit}
-        .bdt-metric
-          span.bdt-metric-value #{analysis.templateLines}
-          span.bdt-metric-label Template lines
-        .bdt-metric
-          span.bdt-metric-value #{analysis.indentUnit}
-          span.bdt-metric-label Indent spaces
-        div.bdt-histogram(role="img" aria-label={`Template lines per depth: ${analysis.histogram.map((count, depth) => `depth ${depth}: ${count}`).join(', ')}`})
-          each count, depth in analysis.histogram key depth
-            .bdt-histogram-col(title={`Depth ${depth}: ${count} line${count === 1 ? '' : 's'}`})
-              span(className={cx('bdt-histogram-bar', tone(depth, settings.depthLimit))} style={{ height: `${Math.max(2, Math.round((count / histogramMax) * 24))}px` }})
-              span.bdt-histogram-label #{depth}
-      .bdt-refactor
-        section.bdt-suggestions(ref={suggestionsPane} aria-label="Refactor suggestions")
-          if suggestions.length === 0
-            .bdt-empty
-              .bdt-empty-card
-                p.bdt-empty-title No automatic suggestions
-                p Click a starting line in the source to extract a block manually.
-          else
-            each suggestion in suggestions key suggestion.id
-              article(
-                ~ className={cx('bdt-card', suggestion.id === selectedId && 'is-selected')}
-                ~ onClick={() => select(suggestion)}
-                ~ )
-                .bdt-card-head
-                  span(className={cx('bdt-severity', `is-${suggestion.severity}`)} title={suggestion.severity})
-                  if suggestion.kind !== 'continuation' && targets(suggestion).length > 0
-                    input(
-                      ~ className={cx('bdt-card-title', 'bdt-card-title-input', nameIssue(suggestion, nameOf(suggestion)) !== null && 'is-invalid')}
-                      ~ value={nameOf(suggestion)}
-                      ~ aria-label={suggestion.mapping === null ? 'Component name' : suggestion.mapping.placement === 'module' ? 'Array name' : 'Loop item name'}
-                      ~ title={nameIssue(suggestion, nameOf(suggestion)) ?? 'Rename before applying'}
-                      ~ spellcheck="false"
-                      ~ autocomplete="off"
-                      ~ onClick={(event) => event.stopPropagation()}
-                      ~ onInput={(event) => rename(suggestion, event.currentTarget.value)}
-                      ~ )
-                  else
-                    span.bdt-card-title #{suggestion.name}
-                  span(className={cx('bdt-badge', suggestion.kind === 'extract' ? 'is-warn' : 'is-info')}) #{kindLabel(suggestion)}
-                  span.bdt-dim.bdt-metric-label L#{suggestion.startLine}–#{suggestion.endLine}
-                p.bdt-card-reason #{suggestion.reason}
-                .bdt-card-meta
-                  span.bdt-chip #{suggestion.label} in #{suggestion.host}
-                  if !suggestion.typesDerived && suggestion.props.length > 0
-                    span.bdt-chip(title="TypeScript could not be loaded from this project, so prop types are estimated") estimated types
-                  each prop in suggestion.props key prop.name
-                    span.bdt-chip(title={`${prop.name}: ${prop.type}`})
-                      | #{prop.name}
-                      span.bdt-chip-type #{': ' + prop.type}
-                .bdt-card-actions
-                  button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? '🞁' : '🞃'}
-                  if suggestion.kind !== 'continuation'
-                    button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'component ⮻' : 'component ⮺'}
-                  button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'usage ⮻' : 'usage ⮺'}
-                  button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) open ⧽
-                .bdt-card-actions
-                  each target, index in targets(suggestion) key target
-                    button(
-                      ~ type="button"
-                      ~ className={cx('bdt-button-critical', index === 0 && '')}
-                      ~ title={suggestion.kind === 'continuation' ? 'Move each prop onto its own ~ continuation line' : suggestion.mapping !== null ? 'Render the repeated elements from an array with each' : target === 'file' ? `Write ${nameOf(suggestion).trim()}.btsx next to this file and import it` : 'Add a local component to this file'}
-                      ~ disabled={pending?.status === 'applying' || pending?.status === 'loading' || nameIssue(suggestion, nameOf(suggestion)) !== null}
-                      ~ onClick={() => preview(suggestion, target)}
-                      ~ )
-                      | #{targetLabel(target, suggestion)}
-
-                if suggestion.autoApply.blocked !== null
-                  p.bdt-card-note Manual only: #{suggestion.autoApply.blocked}
-                elseif suggestion.autoApply.fileBlocked !== null && suggestion.mapping === null
-                  p.bdt-card-note Stays in this file: #{suggestion.autoApply.fileBlocked}
-                if pending !== null && pending.suggestionId === suggestion.id
-                  div.bdt-plan(role="group" aria-label="Review refactor")
-                    if pending.status === 'loading'
-                      p.bdt-muted Preparing #{targetLabel(pending.target, suggestion).toLowerCase()}…
+    .bdt-refactor
+      .bdt-refactor-overview
+        .bdt-metrics
+          .bdt-metric(className={analysis.maxDepth > settings.depthLimit && 'metric-alert'})
+            span(className={cx('bdt-metric-value', analysis.maxDepth > settings.depthLimit && 'is-over')}) #{analysis.maxDepth}
+            span.bdt-metric-label Max depth
+          .bdt-metric
+            span.bdt-metric-value #{analysis.averageDepth}
+            span.bdt-metric-label Avg depth
+          .bdt-metric(className={analysis.deepLines > 0 && 'metric-alert'})
+            span(className={cx('bdt-metric-value', analysis.deepLines > 0 && 'is-over')}) #{analysis.deepLines}
+            span.bdt-metric-label Lines over #{settings.depthLimit}
+          .bdt-metric
+            span.bdt-metric-value #{analysis.templateLines}
+            span.bdt-metric-label Template lines
+          .bdt-metric
+            span.bdt-metric-value #{analysis.indentUnit}
+            span.bdt-metric-label Indent spaces
+          div.bdt-histogram(role="img" aria-label={`Template lines per depth: ${analysis.histogram.map((count, depth) => `depth ${depth}: ${count}`).join(', ')}`})
+            each count, depth in analysis.histogram key depth
+              .bdt-histogram-col(title={`Depth ${depth}: ${count} line${count === 1 ? '' : 's'}`})
+                span(className={cx('bdt-histogram-bar', tone(depth, settings.depthLimit))} style={{ height: `${Math.max(2, Math.round((count / histogramMax) * 24))}px` }})
+                span.bdt-histogram-label #{depth}
+        .bdt-refactor-left-body
+          FileList(files={files} active={file} metrics={true} onSelect={onSelectFile})
+          section.bdt-suggestions(ref={suggestionsPane} aria-label="Refactor suggestions")
+            if suggestions.length === 0
+              .bdt-empty
+                .bdt-empty-card
+                  p.bdt-empty-title No automatic suggestions
+                  p Click a starting line in the source to extract a block manually.
+            else
+              each suggestion in suggestions key suggestion.id
+                article(
+                  ~ className={cx('bdt-card', suggestion.id === selectedId && 'is-selected')}
+                  ~ onClick={() => select(suggestion)}
+                  ~ )
+                  .bdt-card-head
+                    span(className={cx('bdt-severity', `is-${suggestion.severity}`)} title={suggestion.severity})
+                    if suggestion.kind !== 'continuation' && targets(suggestion).length > 0
+                      input(
+                        ~ className={cx('bdt-card-title', 'bdt-card-title-input', nameIssue(suggestion, nameOf(suggestion)) !== null && 'is-invalid')}
+                        ~ value={nameOf(suggestion)}
+                        ~ aria-label={suggestion.mapping === null ? 'Component name' : suggestion.mapping.placement === 'module' ? 'Array name' : 'Loop item name'}
+                        ~ title={nameIssue(suggestion, nameOf(suggestion)) ?? 'Rename before applying'}
+                        ~ spellcheck="false"
+                        ~ autocomplete="off"
+                        ~ onClick={(event) => event.stopPropagation()}
+                        ~ onInput={(event) => rename(suggestion, event.currentTarget.value)}
+                        ~ )
                     else
-                      fragment
-                        if pending.result !== null
-                          fragment
-                            p.bdt-plan-title Review · #{targetLabel(pending.target, suggestion)} · #{pending.result.files.length} file#{pending.result.files.length === 1 ? '' : 's'}
-                            each change in pending.result.files key change.path
-                              .bdt-plan-file
-                                .bdt-plan-file-head
-                                  span
-                                    PathLabel(path={change.path})
-                                  span(className={cx('bdt-badge', change.action === 'create' ? 'is-ok' : 'is-info')}) #{change.action === 'create' ? 'new file' : 'edit'}
-                                  span.bdt-added +#{change.added}
-                                  span.bdt-removed −#{change.removed}
-                                .bdt-diff
-                                  .bdt-diff-inner
-                                    each hunk, hunkIndex in change.hunks key hunkIndex
-                                      fragment
-                                        p.bdt-diff-head @@ −#{hunk.oldStart} +#{hunk.newStart} @@
-                                        each line, lineIndex in hunk.lines key lineIndex
-                                          div(className={`bdt-diff-line is-${line.type}`}) #{DIFF_SIGN[line.type] + ' ' + line.text}
-                        if pending.error !== null
-                          pre.bdt-plan-error #{pending.error}
-                        .bdt-card-actions
-                          if pending.result !== null && pending.error === null
-                            button.bdt-button-critical(type="button" disabled={pending.status === 'applying'} onClick={confirm}) #{pending.status === 'applying' ? 'Applying…' : 'Apply changes'}
-                          button.bdt-button(type="button" disabled={pending.status === 'applying'} onClick={() => setPending(null)}) Cancel
-                if openId === suggestion.id
-                  pre.bdt-pre #{applyGuide(suggestion)}
-        section.bdt-pane(aria-label="Source with nesting depth")
-          Splitter(split="refactor" edge="start" label="Resize suggestions and source")
-          .bdt-pane-head
-            span Nesting depth per line
-            .bdt-spacer
-            span.bdt-dim #{selecting ? 'Selecting block…' : selected === null ? 'Click a starting line to extract a block' : `${selected.name}: ${selected.occurrences.length === 1 ? 'section' : `${selected.occurrences.length} copies`} highlighted`}
-          if selectionError !== null
-            p.bdt-project-message(role="status") #{selectionError}
-          CodeView(
-            ~ source={current.source}
-            ~ language="btsx"
-            ~ label="BTSX source with nesting depth"
-            ~ depths={analysis.lineDepths}
-            ~ depthLimit={settings.depthLimit}
-            ~ ranges={selected?.occurrences}
-            ~ activeLine={selected?.startLine}
-            ~ onLineClick={selectBlock}
-            ~ scrollTo={scroll}
-            ~ )
+                      span.bdt-card-title #{suggestion.name}
+                    span(className={cx('bdt-badge', suggestion.kind === 'extract' ? 'is-warn' : 'is-info')}) #{kindLabel(suggestion)}
+                    span.bdt-dim.bdt-metric-label L#{suggestion.startLine}–#{suggestion.endLine}
+                  p.bdt-card-reason #{suggestion.reason}
+                  .bdt-card-meta
+                    span.bdt-chip #{suggestion.label} in #{suggestion.host}
+                    if !suggestion.typesDerived && suggestion.props.length > 0
+                      span.bdt-chip(title="TypeScript could not be loaded from this project, so prop types are estimated") estimated types
+                    each prop in suggestion.props key prop.name
+                      span.bdt-chip(title={`${prop.name}: ${prop.type}`})
+                        | #{prop.name}
+                        span.bdt-chip-type #{': ' + prop.type}
+                  .bdt-card-actions
+                    button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? '🞁' : '🞃'}
+                    if suggestion.kind !== 'continuation'
+                      button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'component ⮻' : 'component ⮺'}
+                    button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'usage ⮻' : 'usage ⮺'}
+                    button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) open ⧽
+                  .bdt-card-actions
+                    each target, index in targets(suggestion) key target
+                      button(
+                        ~ type="button"
+                        ~ className={cx('bdt-button-critical', index === 0 && '')}
+                        ~ title={suggestion.kind === 'continuation' ? 'Move each prop onto its own ~ continuation line' : suggestion.mapping !== null ? 'Render the repeated elements from an array with each' : target === 'file' ? `Write ${nameOf(suggestion).trim()}.btsx next to this file and import it` : 'Add a local component to this file'}
+                        ~ disabled={pending?.status === 'applying' || pending?.status === 'loading' || nameIssue(suggestion, nameOf(suggestion)) !== null}
+                        ~ onClick={() => preview(suggestion, target)}
+                        ~ )
+                        | #{targetLabel(target, suggestion)}
+
+                  if suggestion.autoApply.blocked !== null
+                    p.bdt-card-note Manual only: #{suggestion.autoApply.blocked}
+                  elseif suggestion.autoApply.fileBlocked !== null && suggestion.mapping === null
+                    p.bdt-card-note Stays in this file: #{suggestion.autoApply.fileBlocked}
+                  if pending !== null && pending.suggestionId === suggestion.id
+                    div.bdt-plan(role="group" aria-label="Review refactor")
+                      if pending.status === 'loading'
+                        p.bdt-muted Preparing #{targetLabel(pending.target, suggestion).toLowerCase()}…
+                      else
+                        fragment
+                          if pending.result !== null
+                            fragment
+                              p.bdt-plan-title Review · #{targetLabel(pending.target, suggestion)} · #{pending.result.files.length} file#{pending.result.files.length === 1 ? '' : 's'}
+                              each change in pending.result.files key change.path
+                                .bdt-plan-file
+                                  .bdt-plan-file-head
+                                    span
+                                      PathLabel(path={change.path})
+                                    span(className={cx('bdt-badge', change.action === 'create' ? 'is-ok' : 'is-info')}) #{change.action === 'create' ? 'new file' : 'edit'}
+                                    span.bdt-added +#{change.added}
+                                    span.bdt-removed −#{change.removed}
+                                  .bdt-diff
+                                    .bdt-diff-inner
+                                      each hunk, hunkIndex in change.hunks key hunkIndex
+                                        fragment
+                                          p.bdt-diff-head @@ −#{hunk.oldStart} +#{hunk.newStart} @@
+                                          each line, lineIndex in hunk.lines key lineIndex
+                                            div(className={`bdt-diff-line is-${line.type}`}) #{DIFF_SIGN[line.type] + ' ' + line.text}
+                          if pending.error !== null
+                            pre.bdt-plan-error #{pending.error}
+                          .bdt-card-actions
+                            if pending.result !== null && pending.error === null
+                              button.bdt-button-critical(type="button" disabled={pending.status === 'applying'} onClick={confirm}) #{pending.status === 'applying' ? 'Applying…' : 'Apply changes'}
+                            button.bdt-button(type="button" disabled={pending.status === 'applying'} onClick={() => setPending(null)}) Cancel
+                  if openId === suggestion.id
+                    pre.bdt-pre #{applyGuide(suggestion)}
+      section.bdt-pane(aria-label="Source with nesting depth")
+        Splitter(split="refactor" edge="start" label="Resize suggestions and source")
+        .bdt-pane-head
+          span Nesting depth per line
+          .bdt-spacer
+          span.bdt-dim #{selecting ? 'Selecting block…' : selected === null ? 'Click a starting line to extract a block' : `${selected.name}: ${selected.occurrences.length === 1 ? 'section' : `${selected.occurrences.length} copies`} highlighted`}
+        if selectionError !== null
+          p.bdt-project-message(role="status") #{selectionError}
+        CodeView(
+          ~ source={current.source}
+          ~ language="btsx"
+          ~ label="BTSX source with nesting depth"
+          ~ depths={analysis.lineDepths}
+          ~ depthLimit={settings.depthLimit}
+          ~ ranges={selected?.occurrences}
+          ~ activeLine={selected?.startLine}
+          ~ onLineClick={selectBlock}
+          ~ scrollTo={scroll}
+          ~ )

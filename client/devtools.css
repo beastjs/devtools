@@ -1266,14 +1266,17 @@ html.bdt-resizing * {
 
 .bdt-metrics {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   align-items: stretch;
   gap: 8px;
-  padding: 10px 10px;
+  padding: 10px;
   border-bottom: 1px solid var(--bdt-line);
 }
 
 .bdt-metric {
+  flex: none;
   display: grid;
   gap: 2px;
   min-width: 78px;
@@ -1308,6 +1311,7 @@ html.bdt-resizing * {
 }
 
 .bdt-histogram {
+  flex: none;
   display: flex;
   align-items: flex-end;
   gap: 3px;
@@ -1359,17 +1363,38 @@ html.bdt-resizing * {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, calc(var(--bdt-refactor-share, 0.42) * 100%)) minmax(0, 1fr);
+  grid-template-columns: minmax(480px, calc(var(--bdt-refactor-share, 0.4) * 100%)) minmax(0, 1fr);
+}
+
+.bdt-refactor-overview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--bdt-line);
+}
+
+.bdt-refactor-left-body,
+.bdt-refactor-fallback {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.bdt-refactor-left-body > .bdt-sidebar {
+  max-width: calc(100% - 200px);
 }
 
 .bdt-suggestions {
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: 4px;
   display: grid;
   align-content: start;
   gap: 8px;
-  border-right: 1px solid var(--bdt-line);
 }
 
 .bdt-card {
@@ -1505,7 +1530,15 @@ html.bdt-resizing * {
     grid-template-rows: 1fr 1fr;
   }
 
-  .bdt-suggestions {
+  .bdt-refactor-left-body > .bdt-sidebar {
+    max-width: none;
+  }
+
+  .bdt-refactor-left-body {
+    flex-direction: column;
+  }
+
+  .bdt-refactor-overview {
     border-right: 0;
     border-bottom: 1px solid var(--bdt-line);
   }
