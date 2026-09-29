@@ -1654,7 +1654,7 @@ html.bdt-resizing * {
 .bdt-card-title-input:hover,
 .bdt-card-title-input:focus {
   border-bottom-color: var(--bdt-line-2);
-  border-radius: 0px!;
+  border-radius: 0;
   outline: none;
 }
 

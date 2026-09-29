@@ -52,6 +52,7 @@
     "dist",
     "client",
     "shared",
+    "assets",
     "!**/*.test.ts",
     "README.md",
     "CHANGELOG.md",
