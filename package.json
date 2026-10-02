@@ -5,6 +5,7 @@
   "license": "ISC",
   "author": "phtn",
   "type": "module",
+  "workspaces": ["packages/*"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/beastjs/devtools.git"
@@ -52,6 +53,7 @@
     "dist",
     "client",
     "components",
+    "packages/icons/src",
     "shared",
     "assets",
     "!**/*.test.ts",
@@ -67,6 +69,7 @@
     "node": ">=22.22.2"
   },
   "scripts": {
+    "icons:build": "bun run --cwd packages/icons build",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
@@ -102,6 +105,7 @@
     "@rsbuild/core": "^2.2.9",
     "@rspack/core": "^2.2.7",
     "@rspack/dev-server": "^2.2.1",
+    "@tsrx/typescript-plugin": "0.3.135",
     "@types/node": "^26.2.0",
     "beast-tsrx": "0.4.3",
     "octane": "0.4.3",

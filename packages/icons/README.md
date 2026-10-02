@@ -3,7 +3,7 @@
 The icons the web and docs apps draw. Each icon is one file in `svg/`.
 `bun run icons:build` turns them into `src/icons.ts`, which `Icon` reads.
 
-To use the same setup in another app, see [docs/icons.md](../../docs/icons.md).
+This source package uses the host app’s Beast/Octane compiler.
 
 ## Drawing an icon
 
@@ -26,11 +26,9 @@ clickable, put it inside a `button` and give the button an `aria-label`.
 
 ## Adding an icon
 
-1. Save it as `svg/<name>.svg`, or `svg/color/<name>.svg` if it must keep its
-   own colors. Names are lowercase words joined by dashes.
+1. Save it as `svg/<name>.svg`. Names are lowercase words joined by dashes.
+   Each SVG must include its own `viewBox`; its colors and paths are preserved.
 2. Run `bun run icons:build` from the repository root.
 3. Commit the `.svg` and `src/icons.ts`.
 
-`bun test` fails when `src/icons.ts` does not match the files in `svg/`.
-[docs/icons.md](../../docs/icons.md#what-build-iconsts-does) explains what the
-build does to each file, and what its messages mean.
+Run `bun run --cwd packages/icons typecheck` from the repository root to check the package.

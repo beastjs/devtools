@@ -5,6 +5,7 @@ import FileList from './FileList.btsx'
 import { applyRefactor, copyText, fetchSelection, openInEditor, undoRefactor } from './api.ts'
 import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
+import CallChip from '../components/call-chip.btsx'
 import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
 
 module
@@ -100,6 +101,12 @@ setup
     setPending((value) => (value?.suggestionId === suggestion.id && value.status !== 'applying' ? null : value));
   };
   const [pending, setPending] = useState<PendingRefactor | null>(null);
+  const [refactorCall, setRefactorCall] = useState<{ status: 'running' | 'done' | 'error'; name: string } | null>(null);
+  useEffect(() => {
+    if (refactorCall?.status !== 'done') return;
+    const timer = setTimeout(() => setRefactorCall(null), 3000);
+    return () => clearTimeout(timer);
+  }, [refactorCall]);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -208,6 +215,7 @@ setup
     if (pending === null || current === null) return;
     const request = { path: current.path, hash: current.hash, settings, suggestionId: pending.suggestionId, target: pending.target, name: pending.name };
     setPending({ ...pending, status: 'applying' });
+    setRefactorCall({ status: 'running', name: pending.name });
     try {
       const result = await applyRefactor({ ...request, dryRun: false }, projectId);
       setPending(null);
@@ -215,7 +223,9 @@ setup
       setOpenId(null);
       setUndoError(null);
       onRecentChange({ undoId: result.undoId!, summary: result.summary });
+      setRefactorCall({ status: 'done', name: pending.name });
     } catch (error) {
+      setRefactorCall({ status: 'error', name: pending.name });
       setPending({ ...pending, status: 'ready', error: message(error) });
     }
   };
@@ -231,6 +241,9 @@ setup
   };
 
 .bdt-pane
+  if refactorCall !== null
+    .bdt-refactor-call
+      CallChip(icon="edit" name="Refactor" argument={refactorCall.name} status={refactorCall.status} color="var(--bdt-text)" surfaceColor="var(--bdt-bg-4)" doneColor="var(--bdt-ok)" errorColor="var(--bdt-bad)" onRetry={refactorCall.status === 'error' ? confirm : undefined})
   .bdt-toolbar
     span.bdt-toolbar-title.bdt-mono
       PathLabel(path={file ?? 'No file selected'})

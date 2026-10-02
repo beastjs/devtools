@@ -1,6 +1,6 @@
 import { animate, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform } from "@octanejs/motion";
 import { useEffect, useId, useRef, useState } from "octane";
-import type { PointerEvent, KeyboardEvent, FocusEvent } from "octane";
+import type { PointerEvent, KeyboardEvent as OctaneKeyboardEvent, FocusEvent } from "octane";
 module
   type ScrubFieldSize = "sm" | "md" | "lg" | "xl";
   interface ScrubFieldProps {
@@ -281,7 +281,7 @@ setup
       inputRef.current.value = fmt(valueRef.current);
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: OctaneKeyboardEvent<HTMLInputElement>) => {
     const typedNumber = draft !== null && draft.trim() !== "" ? Number(draft) : NaN;
     const from = Number.isNaN(typedNumber) ? valueRef.current : typedNumber;
     const deltas: Record<string, number> = {

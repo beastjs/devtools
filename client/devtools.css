@@ -1983,6 +1983,56 @@ html.bdt-layout-dragging:is([data-bdt-layout-edge='top'], [data-bdt-layout-edge=
   cursor: ns-resize !important;
 }
 
+.bdt-refactor-call {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100% - 32px);
+}
+.bdt-call-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  height: var(--cc-size);
+  padding: 0 var(--cc-pad);
+  gap: var(--cc-gap);
+  border-radius: var(--cc-radius);
+  background: var(--cc-surface);
+  color: var(--cc-color);
+  font-size: var(--cc-font);
+  box-shadow: 0 4px 20px #0006;
+}
+.bdt-call-chip > span:not(.bdt-call-chip-fill) { position: relative; }
+.bdt-call-chip > .bdt-call-chip-fill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--cc-progress) var(--cc-progress-pct), transparent);
+}
+.bdt-call-chip[data-status='running'] > .bdt-call-chip-fill { transition: transform var(--cc-expected) linear; }
+.bdt-call-chip[data-status='done'] > .bdt-call-chip-fill {
+  background: color-mix(in srgb, var(--cc-done) var(--cc-wash-pct), transparent);
+  transition: transform 200ms ease, background-color 120ms ease;
+}
+.bdt-call-chip[data-status='error'] > .bdt-call-chip-fill { background: color-mix(in srgb, var(--cc-error) var(--cc-wash-pct), transparent); }
+.bdt-call-chip-icons { flex: none; width: calc(var(--cc-font) + 2px); height: calc(var(--cc-font) + 2px); overflow: hidden; }
+.bdt-call-chip-glyph { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: translateY(70%); transition: opacity 160ms ease, transform 240ms ease; }
+.bdt-call-chip-glyph[data-state='in'] { opacity: 1; transform: none; }
+.bdt-call-chip-glyph[data-state='out'] { transform: translateY(-70%); }
+.bdt-call-chip[data-status='done'] .bdt-call-chip-glyph { color: var(--cc-done); }
+.bdt-call-chip[data-status='error'] .bdt-call-chip-glyph { color: var(--cc-error); }
+.bdt-call-chip-timer { min-width: 8ch; text-align: right; font-variant-numeric: tabular-nums; opacity: .5; }
+.bdt-call-chip-retry { position: absolute; inset: 0; background: transparent; border-radius: inherit; cursor: pointer; }
+.bdt-call-chip-retry:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+.bdt-call-chip > .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (prefers-reduced-motion: reduce) { .bdt-call-chip-glyph, .bdt-call-chip > .bdt-call-chip-fill { transition: none; } }
+
 .bdt-element-toolbar {
   padding: 10px;
   gap: 10px;

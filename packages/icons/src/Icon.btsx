@@ -1,11 +1,11 @@
-import { ICON_VIEWBOX, icons } from './icons'
+import { iconViewBoxes, icons } from './icons'
 import type { IconProps } from './types'
 
 props { name, size = 20, className, color, label }: IconProps
 
 svg(
   ~ xmlns="http://www.w3.org/2000/svg"
-  ~ viewBox={ICON_VIEWBOX}
+  ~ viewBox={iconViewBoxes[name]}
   ~ width={size}
   ~ height={size}
   ~ fill="currentColor"
