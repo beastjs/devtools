@@ -7,6 +7,8 @@ import { cx, TABS, type TabId } from './util.ts'
 
 module
   interface TopbarProps {
+    theme: 'dark' | 'light'
+    onToggleTheme: () => void
     tab: TabId
     setTab: (next: TabId | ((prev: TabId) => TabId)) => void
     suggestionCount: number
@@ -46,7 +48,7 @@ component MainTabs
         if item.id === 'refactor' && suggestionCount > 0
           span.bdt-tab-count.bdt-refactor-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
 
-props { tab, setTab, suggestionCount, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, project, projectId, selectProject, runtime, status, setOpen }: TopbarProps
+props { theme, onToggleTheme, tab, setTab, suggestionCount, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, project, projectId, selectProject, runtime, status, setOpen }: TopbarProps
 header.bdt-topbar
   .bdt-brand
     BeastLogo
@@ -54,6 +56,14 @@ header.bdt-topbar
     span.bdt-brand-sub Devtools
   MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentCount={runtime.componentCount})
   .bdt-spacer
+  button.bdt-icon-button(type="button" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={onToggleTheme})
+    svg(viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true")
+      if theme === 'dark'
+        fragment
+          circle(cx="12" cy="12" r="4")
+          path(d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5")
+      else
+        path(d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z")
   button(type="button" className={cx('bdt-icon-button', componentFinderActive && 'is-component-finder-active')} aria-pressed={componentFinderActive} aria-label="Component Finder" title={componentFinderTitle} onClick={() => setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder')})
     ComponentFinderIcon
   button(type="button" className={cx('bdt-icon-button', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})

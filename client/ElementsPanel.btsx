@@ -41,9 +41,11 @@ component ElementPropertyRow
     const on = property.value === 'true';
   .bdt-element-property
     if property.type === 'boolean'
-      SquishSwitch(checked={on} disabled={disabled || !property.editable} ariaLabel={property.name} width={28} height={18} trackColor="var(--bdt-bg-4)" trackOnColor="var(--bdt-ok)" thumbColor="var(--bdt-text)" thumbOnColor="var(--bdt-bg)" onChange={(next) => onCommit(property.name, String(next))})
+      fragment
+        label.bdt-element-property-name(htmlFor={inputId} title={property.name}) #{property.name}
+        SquishSwitch(id={inputId} checked={on} disabled={disabled || !property.editable} ariaLabel={property.name} width={28} height={18}  onChange={(next) => onCommit(property.name, String(next))})
     elseif numeric !== null && property.editable
-      ScrubField.bdt-scrub-delta(label={property.name} value={numeric.value} defaultValue={original?.value ?? numeric.value} suffix={numeric.unit} min={(original?.value ?? numeric.value)/2} max={numeric.max} step={numeric.step} size="md" showDelta showDirty={true} fineMultiplier={0.1} coarseMultiplier={2} sensitivity={2} showFill={true} fillMin={original?.fillMin ?? numeric.fillMin} fillMax={original?.fillMax ?? numeric.fillMax} chipColor="#2a2a2a" accent="#666" onCommit={(next) => onCommit(property.name, `${next}${numeric.unit}${numeric.important}`)} disabled={disabled} className="bdt-style-scrub")
+      ScrubField.bdt-scrub-delta(label={property.name} value={numeric.value} defaultValue={original?.value ?? numeric.value} suffix={numeric.unit} min={(original?.value ?? numeric.value)/2} max={numeric.max} step={numeric.step} size="md" showDelta showDirty={true} fineMultiplier={0.1} coarseMultiplier={2} sensitivity={2} showFill={true} fillMin={original?.fillMin ?? numeric.fillMin} fillMax={original?.fillMax ?? numeric.fillMax} chipColor="var(--bdt-bg-4)" accent="var(--bdt-scrub-accent)" onCommit={(next) => onCommit(property.name, `${next}${numeric.unit}${numeric.important}`)} disabled={disabled} className="bdt-style-scrub")
     elseif property.editable
       .bdt-element-property-field
         label.bdt-element-property-name(htmlFor={inputId} title={property.name}) #{property.name}
@@ -59,7 +61,9 @@ component ElementPropertyRow
           ~ onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(property.value); setEditing(false); } }}
           ~ )
     else
-      span.bdt-element-property-readonly(title={property.value}) #{property.value.length > 240 ? property.value.slice(0, 240) + '…' : property.value}
+      fragment
+        span.bdt-element-property-name(title={property.name}) #{property.name}
+        span.bdt-element-property-readonly(title={property.value}) #{property.value.length > 240 ? property.value.slice(0, 240) + '…' : property.value}
     if removable && property.editable
       button.bdt-icon-button(type="button" disabled={disabled} title={`Remove ${property.name}`} aria-label={`Remove ${property.name}`} onClick={() => onCommit(property.name, null)}) ×
     elseif property.inline
@@ -188,12 +192,13 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
           .bdt-element-filter
             input.bdt-input(type="search" aria-label="Filter element properties" placeholder="Find a property or value…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
             if group === 'styles'
-              SquishSwitch(checked={showAll} onChange={setShowAll} label="All computed styles" width={28} height={18} trackColor="var(--bdt-bg-4)" trackOnColor="var(--bdt-ok)" thumbColor="var(--bdt-text)" thumbOnColor="var(--bdt-bg)")
-            span.bdt-dim #{rows.length} properties
+              SquishSwitch(checked={showAll} onChange={setShowAll} label="All computed styles" width={28} height={18} trackColor="var(--bdt-bg-4)" trackOnColor="var(--bdt-ok)" thumbColor="var(--bdt-line-2)" thumbOnColor="#fafafa")
+            span.bdt-dim.bdt-prop-count #{rows.length}
+            span.bdt-dim properties
           .bdt-element-properties
             if rows.length === 0
               p.bdt-element-note No matching properties.
-            div(className={cx(group === 'styles' && 'bdt-style-columns')})
+            div(className={cx(group === 'styles' && 'bdt-style-columns', group === 'properties' && 'bdt-property-columns')})
               each category in sections key `${group}:${category.id}`
                 .bdt-element-section
                   if category.label !== null
@@ -208,7 +213,7 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
                       span #{category.label}
                       span.bdt-dim #{category.properties.length}
                   if isOpen(category)
-                    div(className={cx('bdt-element-grid', category.columns === 2 && 'is-split')})
+                    div(className={cx('bdt-element-grid', group !== 'properties' && category.columns === 2 && 'is-split')})
                       each property in category.properties key `${group}:${property.name}`
                         ElementPropertyRow(originalValue={savedSnapshot?.[group].find((entry) => entry.name === property.name)?.value} styleControl={group === 'styles'} property={property} disabled={saving || !snapshot.source || !snapshot.connected} removable={group === 'attributes' || (group === 'styles' && !!property.inline)} onCommit={edit})
           if group !== 'properties'

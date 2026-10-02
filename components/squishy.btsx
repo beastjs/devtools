@@ -38,7 +38,7 @@ module
   const STRETCH_SPEED = 600;
   const TAP_SLOP = { fine: 4, coarse: 8 };
 
-props { checked, defaultChecked = false, onChange, label, disabled = false, trackColor = "var(--border)", trackOnColor = "var(--foreground)", thumbColor='var(--sidebar)', thumbOnColor='var(--muted)', width = 52, height = 32, radius = 16, speed = 50, stretch = 50, hoverScale = 1.08, colorDuration = 180, ariaLabel, className, id }: SquishSwitchProps
+props { checked, defaultChecked = false, onChange, label, disabled = false, trackColor = "var(--bdt-bg-4)", trackOnColor = "var(--bdt-ok)", thumbColor='var(--bdt-line-2)', thumbOnColor='#fafafa', width = 52, height = 32, radius = 16, speed = 50, stretch = 50, hoverScale = 1.08, colorDuration = 180, ariaLabel, className, id }: SquishSwitchProps
 
 setup
   const reduce = useReducedMotion();

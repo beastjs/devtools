@@ -44,6 +44,7 @@ module
 
 module
   interface DevtoolsInterfaceProps {
+    theme: 'dark' | 'light'
     open: boolean
     componentFinderActive: boolean
     componentFinderTitle: 'Stop Component Finder (Esc)' | 'Component Finder (Alt+Shift+C)'
@@ -54,8 +55,8 @@ module
   }
 
 component DevtoolsInterface
-  props { open, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, setOpen }: DevtoolsInterfaceProps
-  div(className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
+  props { theme, open, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, setOpen }: DevtoolsInterfaceProps
+  div(data-theme={theme} className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
     button(type="button" className={cx('bdt-launcher-component-finder bg-white/50 backdrop-blur-3xl', componentFinderActive && 'is-component-finder-active')} aria-pressed={componentFinderActive} aria-label="Component Finder" title={componentFinderTitle} onClick={() => setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder')})
       ComponentFinderIcon
     button( type="button" className={cx('bdt-launcher-element-picker bg-white/70 backdrop-blur-3xl hover:text-active!', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})
@@ -66,6 +67,7 @@ component DevtoolsInterface
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [open, setOpen] = useState(initial.open);
+  const [theme, setTheme] = useState(initial.theme);
   // The dock stays mounted after closing until its slide-out ends.
   const [docked, setDocked] = useState(initial.open);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -105,8 +107,8 @@ setup
     : runtime.status === 'connecting' ? 'Connecting…' : 'Runtime off';
 
   useEffect(() => {
-    savePreferences({ open, tab, height, file, showControlFlow, componentsView, settings });
-  }, [open, tab, height, file, showControlFlow, componentsView, settings]);
+    savePreferences({ theme, open, tab, height, file, showControlFlow, componentsView, settings });
+  }, [theme, open, tab, height, file, showControlFlow, componentsView, settings]);
 
   useEffect(() => onSourceChanged(() => setRevision((value) => value + 1)), []);
 
@@ -243,6 +245,7 @@ if open || docked
     ~ aria-label="Beast DevTools"
     ~ aria-hidden={open ? undefined : 'true'}
     ~ className={cx('bdt-root', 'bdt-dock', open && 'is-open')}
+    ~ data-theme={theme}
     ~ style={{ height: `${height}px` }}
     ~ onTransitionEnd={onDockTransitionEnd}
     ~ )
@@ -253,6 +256,8 @@ if open || docked
       ~ onPointerDown={(event) => startResize(event, height, setHeight)}
       ~ )
     Topbar(
+      ~ theme={theme}
+      ~ onToggleTheme={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}
       ~ tab={tab}
       ~ setTab={setTab}
       ~ suggestionCount={suggestionCount}
@@ -310,4 +315,4 @@ if open || docked
             ~ onSettingsChange={setSettings}
             ~ onRecentChange={(value) => { if (generation === projectGeneration.current) setRecent(value); }}
             ~ )
-DevtoolsInterface(open={open} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} setOpen={setOpen})
+DevtoolsInterface(theme={theme} open={open} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} setOpen={setOpen})
