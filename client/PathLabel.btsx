@@ -18,4 +18,6 @@ if dir !== ''
   span.bdt-path-dir #{dir}
 span.bdt-path-name #{name}
 if extension !== ''
-  span.bdt-path-dir #{extension}
+  span.bdt-path-dir
+    | #{extension.slice(0, 3)}
+    span.bdt-path-extension-tail #{extension.slice(3)}

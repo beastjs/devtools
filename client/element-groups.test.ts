@@ -30,9 +30,8 @@ test('read-only DOM properties are grouped by category', () => {
 
 test('styles are grouped by category in a stable order', () => {
   const sections = groupStyles(['--brand', 'color', 'column-gap', 'column-count', 'border-radius', 'margin-top', 'width', 'font-size', 'transform', 'cursor', 'display', 'overflow-wrap', 'transition-duration', 'some-future-property'].map((name) => prop(name)))
-  expect(ids(sections)).toEqual(['layout', 'flex', 'size', 'spacing', 'typography', 'color', 'border', 'effects', 'motion', 'interaction', 'custom', 'other'])
-  expect(names(sections, 'flex')).toEqual(['column-gap'])
-  expect(names(sections, 'layout')).toEqual(['column-count', 'display'])
+  expect(ids(sections)).toEqual(['layout', 'size', 'spacing', 'typography', 'color', 'border', 'effects', 'motion', 'interaction', 'custom', 'other'])
+  expect(names(sections, 'layout')).toEqual(['column-gap', 'column-count', 'display'])
   expect(names(sections, 'typography')).toEqual(['font-size', 'overflow-wrap'])
 })
 

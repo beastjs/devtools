@@ -181,7 +181,8 @@ export class BeastProject {
       request.settings,
       {
         ...this.#typed(absolutePath),
-        ...(/^manual:[1-9]\d*$/.test(request.suggestionId) ? { selectionLine: Number(request.suggestionId.slice(7)) } : {}),
+        ...(/^manual:[1-9]\d*(?::map:[1-9]\d*:[1-9]\d*)?$/.test(request.suggestionId)
+          ? { selectionLine: Number(request.suggestionId.split(':')[1]) } : {}),
       },
     )
     const found = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)

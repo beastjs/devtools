@@ -90,6 +90,25 @@ test('opened folder saves emit source-change events', async () => {
 })
 
 
+test('selected child patterns can be previewed, applied and undone', async () => {
+  const { other, get, post } = await fixture()
+  const source = 'main\n  section\n    button Save\n    button Cancel\n  footer Done\n'
+  writeFileSync(other.appPath, source)
+  const { id } = await (await post('/open-project', { path: other.root })).json()
+  const selected = await (await get(`/file?project=${id}&path=src/App.btsx&line=2`)).json() as FileReport
+  const suggestion = selected.analysis!.suggestions.find((suggestion) => suggestion.kind === 'map')!
+  expect(suggestion.id).toBe('manual:2:map:3:4')
+  const request = { path: selected.path, hash: selected.hash, suggestionId: suggestion.id, settings: DEFAULT_SETTINGS, target: 'inline', dryRun: true }
+  expect((await post(`/apply?project=${id}`, request)).status).toBe(200)
+  expect(readFileSync(other.appPath, 'utf8')).toBe(source)
+  const applied = await post(`/apply?project=${id}`, { ...request, dryRun: false })
+  expect(applied.status).toBe(200)
+  const { undoId } = await applied.json()
+  expect(readFileSync(other.appPath, 'utf8')).toContain('    each button in buttons key button.text')
+  expect((await post(`/undo?project=${id}`, { id: undoId })).status).toBe(200)
+  expect(readFileSync(other.appPath, 'utf8')).toBe(source)
+})
+
 test('manual selections can be renamed, previewed, applied and undone in the selected project', async () => {
   const { running, other, get, post } = await fixture()
   const originalRunning = readFileSync(running.appPath, 'utf8')

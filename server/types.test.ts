@@ -125,6 +125,29 @@ describe('derived prop types', () => {
 })
 
 describe('mapping repeated siblings', () => {
+  test.each([
+    ['buttons', ['div', '  h2 Actions', '  button(type="button") Save', '  button(type="button") Cancel', '  a(href="/help") Help']],
+    ['cards', ['section', '  article.card', '    h3 Home', '  article.card', '    h3 Docs']],
+    ['components', ['component Badge', '  props { label }: { label: string }', '  span #{label}', '', 'div', '  Badge(label="Home")', '  Badge(label="Docs")']],
+    ['roots', ['a(href="/") Home', 'a(href="/docs") Docs', 'footer End']],
+  ])('maps a pair of repeated %s and compiles the applied result', (name, lines) => {
+    const path = join(scratch, `${name}.btsx`)
+    writeFileSync(path, [...lines, ''].join('\n'))
+    const { analysis, plan } = analyzeFile(path)
+    const maps = analysis.suggestions.filter((s) => s.kind === 'map')
+    expect(maps).toHaveLength(1)
+    expect(maps[0]!.mapping!.items).toHaveLength(2)
+    const after = plan(maps[0]!.name, 'inline').changes[0]!.after
+    expect(after).toContain('each ')
+    expectCompiles(path, after)
+  })
+
+  test('does not map across comments or different selectors', () => {
+    const path = join(scratch, 'Separate.btsx')
+    writeFileSync(path, ['div', '  button.primary Save', '  button.secondary Cancel', '  // Keep this explanation', '  button.secondary Back', ''].join('\n'))
+    expect(analyzeFile(path).analysis.suggestions.filter((s) => s.kind === 'map')).toHaveLength(0)
+  })
+
   const nav = () => {
     const path = join(scratch, 'Nav.btsx')
     writeFileSync(path, [

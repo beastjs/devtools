@@ -5,6 +5,7 @@ import FileList from './FileList.btsx'
 import { applyRefactor, copyText, fetchSelection, openInEditor, undoRefactor } from './api.ts'
 import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
+import CallChip from '../components/call-chip.btsx'
 import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
 
 module
@@ -68,8 +69,8 @@ module
 
   function kindLabel(suggestion: RefactorSuggestion): string {
     if (suggestion.kind === 'continuation') return 'continuation'
-    if (suggestion.id.startsWith('manual:')) return 'manual'
     if (suggestion.mapping !== null) return `${suggestion.mapping.items.length}× repeated`
+    if (suggestion.id.startsWith('manual:')) return 'manual'
     return suggestion.kind === 'extract' ? '✦' : `${suggestion.occurrences.length}× same shape`
   }
 
@@ -100,6 +101,12 @@ setup
     setPending((value) => (value?.suggestionId === suggestion.id && value.status !== 'applying' ? null : value));
   };
   const [pending, setPending] = useState<PendingRefactor | null>(null);
+  const [refactorCall, setRefactorCall] = useState<{ status: 'running' | 'done' | 'error'; name: string } | null>(null);
+  useEffect(() => {
+    if (refactorCall?.status !== 'done') return;
+    const timer = setTimeout(() => setRefactorCall(null), 3000);
+    return () => clearTimeout(timer);
+  }, [refactorCall]);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -107,19 +114,21 @@ setup
   const [scroll, setScroll] = useState<ScrollTarget | null>(null);
   const current = report !== null && report.path === file ? report : null;
   const analysis = current?.analysis ?? null;
-  const [manual, setManual] = useState<{ hash: string; path: string; suggestion: RefactorSuggestion } | null>(null);
+  const [manual, setManual] = useState<{ hash: string; path: string; suggestions: RefactorSuggestion[] } | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const selectionRequest = useRef(0);
   const suggestionsPane = useRef<HTMLElement | null>(null);
   let copyTimer: ReturnType<typeof setTimeout>;
   useEffect(() => () => clearTimeout(copyTimer), []);
-  const manualSuggestion = manual?.hash === current?.hash && manual?.path === file ? manual?.suggestion : null;
-  const suggestions = [...(manualSuggestion ? [manualSuggestion] : []), ...(analysis?.suggestions ?? [])];
+  const manualSuggestions = manual?.hash === current?.hash && manual?.path === file ? manual?.suggestions : undefined;
+  const suggestions = [...(manualSuggestions ?? []), ...(analysis?.suggestions ?? []).filter((suggestion) =>
+    !manualSuggestions?.some((manual) => manual.kind === suggestion.kind && manual.startLine === suggestion.startLine && manual.endLine === suggestion.endLine)
+  )];
   const selected = suggestions.find((suggestion) => suggestion.id === selectedId) ?? null;
   useEffect(() => {
-    if (manualSuggestion && suggestionsPane.current) suggestionsPane.current.scrollTop = 0;
-  }, [manualSuggestion]);
+    if (manualSuggestions && suggestionsPane.current) suggestionsPane.current.scrollTop = 0;
+  }, [manualSuggestions]);
   const histogramMax = Math.max(1, ...(analysis?.histogram ?? [1]));
   const select = (suggestion: RefactorSuggestion) => {
     setSelectedId(suggestion.id);
@@ -127,6 +136,14 @@ setup
   };
   const selectBlock = async (line: number) => {
     if (current === null || pending?.status === 'applying') return;
+    if (selected?.startLine === line) {
+      selectionRequest.current += 1;
+      setSelecting(false);
+      setSelectedId(null);
+      setPending(null);
+      setSelectionError(null);
+      return;
+    }
     const continuation = suggestions.find((suggestion) => suggestion.kind === 'continuation' && suggestion.startLine === line);
     if (continuation) {
       selectionRequest.current += 1;
@@ -148,7 +165,7 @@ setup
       const suggestion = selection.analysis?.suggestions[0];
       if (suggestion && suggestion.id !== `manual:${line}`) throw new Error('Restart the dev server to enable manual extraction, then select the block again.');
       if (!suggestion) throw new Error('Click the first line of an HTML element or a complete control-flow block. Imports, setup, continuation lines and existing component calls cannot be extracted.');
-      setManual({ hash: selection.hash, path: selection.path, suggestion });
+      setManual({ hash: selection.hash, path: selection.path, suggestions: selection.analysis!.suggestions });
       setNames((value) => ({ ...value, [suggestion.id]: suggestion.name }));
       setSelectedId(suggestion.id);
       setOpenId(null);
@@ -198,6 +215,7 @@ setup
     if (pending === null || current === null) return;
     const request = { path: current.path, hash: current.hash, settings, suggestionId: pending.suggestionId, target: pending.target, name: pending.name };
     setPending({ ...pending, status: 'applying' });
+    setRefactorCall({ status: 'running', name: pending.name });
     try {
       const result = await applyRefactor({ ...request, dryRun: false }, projectId);
       setPending(null);
@@ -205,7 +223,9 @@ setup
       setOpenId(null);
       setUndoError(null);
       onRecentChange({ undoId: result.undoId!, summary: result.summary });
+      setRefactorCall({ status: 'done', name: pending.name });
     } catch (error) {
+      setRefactorCall({ status: 'error', name: pending.name });
       setPending({ ...pending, status: 'ready', error: message(error) });
     }
   };
@@ -221,6 +241,9 @@ setup
   };
 
 .bdt-pane
+  if refactorCall !== null
+    .bdt-refactor-call
+      CallChip(icon="edit" name="Refactor" argument={refactorCall.name} status={refactorCall.status} color="var(--bdt-text)" surfaceColor="var(--bdt-bg-4)" doneColor="var(--bdt-ok)" errorColor="var(--bdt-bad)" onRetry={refactorCall.status === 'error' ? confirm : undefined})
   .bdt-toolbar
     span.bdt-toolbar-title.bdt-mono
       PathLabel(path={file ?? 'No file selected'})
@@ -404,7 +427,7 @@ setup
         .bdt-pane-head
           span Nesting depth per line
           .bdt-spacer
-          span.bdt-dim #{selecting ? 'Selecting block…' : selected === null ? 'Click a starting line to extract a block' : `${selected.name}: ${selected.occurrences.length === 1 ? 'section' : `${selected.occurrences.length} copies`} highlighted`}
+          span.bdt-dim #{selecting ? 'Selecting block…' : selected === null ? 'Click code to select; line numbers fold blocks' : `${selected.name} highlighted · click again to deselect`}
         if selectionError !== null
           p.bdt-project-message(role="status") #{selectionError}
         CodeView(

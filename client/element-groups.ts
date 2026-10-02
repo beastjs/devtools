@@ -101,7 +101,7 @@ export function groupProperties(properties: readonly ElementProperty[]): Element
 // `column-` reaches Layout, and `border-radius` in Border before anything else.
 const STYLE_CATEGORIES: readonly Category[] = [
   { id: 'custom', label: 'Custom properties', prefixes: ['--'] },
-  { id: 'flex', label: 'Flex & grid', names: ['gap', 'row-gap', 'column-gap', 'order'], prefixes: ['flex', 'grid', 'align-', 'justify-', 'place-'] },
+  { id: 'layout', label: 'Layout · Flex & grid', names: ['gap', 'row-gap', 'column-gap', 'order'], prefixes: ['flex', 'grid', 'align-', 'justify-', 'place-'] },
   {
     id: 'size', label: 'Size',
     names: ['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height', 'inline-size', 'block-size', 'min-inline-size', 'max-inline-size', 'min-block-size', 'max-block-size', 'aspect-ratio'],
@@ -130,15 +130,18 @@ const STYLE_CATEGORIES: readonly Category[] = [
     prefixes: ['scroll-', 'overscroll-', 'scrollbar-'],
   },
   {
-    id: 'layout', label: 'Layout',
+    id: 'layout', label: 'Layout · Flex & grid',
     names: ['display', 'position', 'top', 'right', 'bottom', 'left', 'z-index', 'float', 'clear', 'box-sizing', 'visibility', 'isolation', 'content-visibility', 'object-fit', 'object-position', 'columns', 'zoom'],
     prefixes: ['inset', 'overflow', 'contain', 'column-', 'anchor-', 'position-'],
   },
 ]
-const STYLE_DISPLAY = ['layout', 'flex', 'size', 'spacing', 'typography', 'color', 'border', 'effects', 'motion', 'interaction', 'custom', 'other']
+const STYLE_DISPLAY = ['layout', 'size', 'spacing', 'typography', 'color', 'border', 'effects', 'motion', 'interaction', 'custom', 'other']
 
 export function groupStyles(styles: readonly ElementProperty[]): ElementSection[] {
-  return bucket(styles, STYLE_CATEGORIES, STYLE_DISPLAY, 2)
+  const primary = new Set(['layout', 'size', 'spacing', 'typography'])
+  return bucket(styles, STYLE_CATEGORIES, STYLE_DISPLAY, 1).map((section) => ({
+    ...section, collapsed: !primary.has(section.id),
+  }))
 }
 
 export function groupAttributes(attributes: readonly ElementProperty[]): ElementSection[] {

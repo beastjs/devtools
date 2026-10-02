@@ -196,6 +196,11 @@ export function analyzeDocument(
       draft.severity = 'info'
       draft.reason = `Selected block, lines ${draft.startLine}–${draft.endLine}. Rename ${draft.name} if needed, then preview the extraction.`
     }
+    if (selected !== undefined) {
+      drafts.push(...suggestMaps(context, hosts).filter((draft) =>
+        selected.start < draft.startLine && draft.endLine <= selected.end,
+      ))
+    }
   } else {
     const extractions = hosts.flatMap((host) => suggestExtractions(context, host))
     const maps = suggestMaps(context, hosts)
@@ -206,7 +211,9 @@ export function analyzeDocument(
   const typed = deriveTypes(context, document, drafts, options)
   const suggestions = typed.map((suggestion, index) => ({
     ...suggestion,
-    id: options.selectionLine === undefined ? `s${index + 1}` : `manual:${options.selectionLine}`,
+    id: options.selectionLine === undefined ? `s${index + 1}` : suggestion.mapping === null
+      ? `manual:${options.selectionLine}`
+      : `manual:${options.selectionLine}:map:${suggestion.startLine}:${suggestion.endLine}`,
   }))
 
   if (options.selectionLine === undefined) {
@@ -838,6 +845,12 @@ function suggestMaps(context: Context, hosts: readonly Host[]): Draft[] {
   const drafts: Draft[] = []
   const siblingGroups = hosts.flatMap((host) => [host.roots, ...host.roots.flatMap(flatten).flatMap((info) => info.groups)])
   for (const siblings of siblingGroups) {
+    // The tree shape alone does not distinguish tags, selectors or attributes.
+    // Match the same skeleton used by parameterize so unrelated siblings do
+    // not swallow an otherwise valid run of repeated elements.
+    const skeletons = siblings.map((info) => info.node.kind === 'element'
+      ? scanSlots(sectionBody(context, info).join('\n'))?.skeleton
+      : undefined)
     let start = 0
     while (start < siblings.length) {
       let end = start + 1
@@ -845,13 +858,14 @@ function suggestMaps(context: Context, hosts: readonly Host[]): Draft[] {
       while (
         end < siblings.length &&
         head.node.kind === 'element' &&
-        siblings[end]!.shape === head.shape &&
+        skeletons[start] !== undefined &&
+        skeletons[end] === skeletons[start] &&
         // Only blank lines may separate them; comments would be lost.
         context.lines.slice(siblings[end - 1]!.end, siblings[end]!.start - 1).every((line) => line.trim() === '')
       ) end++
       const run = siblings.slice(start, end)
       start = end
-      if (run.length < 2 || (run.length < 3 && head.nodeCount < 3)) continue
+      if (run.length < 2) continue
       const draft = mapDraft(context, run)
       if (draft !== null) drafts.push(draft)
     }

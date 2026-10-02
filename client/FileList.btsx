@@ -14,7 +14,7 @@ module
 
 props { files, active, metrics, onSelect }: FileListProps
 
-nav.bdt-sidebar(aria-label="Beast source files")
+nav.bdt-sidebar.bdt-file-list(aria-label="Beast source files")
   p.bdt-section-label Files · #{files.length}
   .bdt-scroll
     each file in files key file.path
