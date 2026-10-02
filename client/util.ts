@@ -21,7 +21,8 @@ export function preview(value: unknown, budget = 90): string {
 function previewInner(value: unknown, depth: number): string {
   if (value === undefined) return 'undefined'
   if (value === null) return 'null'
-  if (typeof value === 'string') return /^\[(Function|Node|Getter|Array|Object|Unavailable)\]$/.test(value) ? value : JSON.stringify(value)
+  if (typeof value === 'string')
+    return /^\[(Function|Node|Getter|Array|Object|Unavailable)\]$/.test(value) ? value : JSON.stringify(value)
   if (typeof value !== 'object') return String(value)
   if (depth >= 2) return Array.isArray(value) ? `Array(${value.length})` : '{…}'
   if (Array.isArray(value)) return `[${value.map((item) => previewInner(item, depth + 1)).join(', ')}]`
@@ -30,8 +31,10 @@ function previewInner(value: unknown, depth: number): string {
 }
 
 export function pretty(value: unknown): string {
-  return JSON.stringify(value, (_key, item) => (item === undefined ? '__undefined__' : item), 2)
-    .replaceAll('"__undefined__"', 'undefined')
+  return JSON.stringify(value, (_key, item) => (item === undefined ? '__undefined__' : item), 2).replaceAll(
+    '"__undefined__"',
+    'undefined'
+  )
 }
 
 export function valueTone(value: unknown): string {
@@ -48,13 +51,14 @@ export function valueTone(value: unknown): string {
 export type TabId = 'components' | 'inspector' | 'refactor' | 'elements'
 
 export const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
-  { id: 'inspector', label: 'BTSX → TSRX' },
+  { id: 'inspector', label: 'Beast → Octane' },
   { id: 'components', label: 'Components' },
   { id: 'elements', label: 'Elements' },
-  { id: 'refactor', label: 'Refactor' },
+  { id: 'refactor', label: 'Refactor' }
 ]
 
 export interface Preferences {
+  theme: 'dark' | 'light'
   open: boolean
   tab: TabId
   height: number
@@ -67,13 +71,14 @@ export interface Preferences {
 const STORAGE_KEY = 'beast-devtools:preferences'
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  theme: 'dark',
   open: false,
   tab: 'components',
   height: 360,
   file: null,
   showControlFlow: true,
   componentsView: 'blocks',
-  settings: DEFAULT_SETTINGS,
+  settings: DEFAULT_SETTINGS
 }
 
 export function loadPreferences(): Preferences {
@@ -82,9 +87,10 @@ export function loadPreferences(): Preferences {
     return {
       ...DEFAULT_PREFERENCES,
       ...stored,
+      theme: stored.theme === 'light' ? 'light' : 'dark',
       settings: { ...DEFAULT_SETTINGS, ...stored.settings },
       componentsView: stored.componentsView === 'tree' ? 'tree' : 'blocks',
-      height: clampHeight(stored.height ?? DEFAULT_PREFERENCES.height),
+      height: clampHeight(stored.height ?? DEFAULT_PREFERENCES.height)
     }
   } catch {
     return DEFAULT_PREFERENCES
