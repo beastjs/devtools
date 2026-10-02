@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'octane'
+import { useEffect, useMemo, useRef, useState } from 'octane'
+import { codeFolds, hiddenCodeLines } from './code-folds.ts'
 import type { LineRange } from '../shared/types.ts'
 import { highlight, type Language } from './highlight.ts'
 import { cx, scrollToLine, type ScrollTarget } from './util.ts'
@@ -34,22 +35,44 @@ props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES,
 setup
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rows = useMemo(() => highlight(source, language).map((tokens, index) => ({ number: index + 1, tokens })), [source, language]);
+  const folds = useMemo(() => codeFolds(source, language), [source, language]);
+  const [foldState, setFoldState] = useState<{ source: string; collapsed: Set<number> }>({ source, collapsed: new Set() });
+  const collapsed = foldState.source === source ? foldState.collapsed : new Set<number>();
+  const hidden = hiddenCodeLines(folds, collapsed);
+  const visibleRows = rows.filter((row) => !hidden.has(row.number));
+  const toggleFold = (line: number) => setFoldState((state) => {
+    const next = new Set(state.source === source ? state.collapsed : []);
+    if (next.has(line)) next.delete(line); else next.add(line);
+    return { source, collapsed: next };
+  });
   const linkedLines = useMemo(() => new Set(linked), [linked]);
   const inRange = (line: number) => ranges.some((range) => range.startLine <= line && line <= range.endLine);
   useEffect(() => {
+    if (scrollTo === null) return;
+    setFoldState((state) => {
+      const next = new Set(state.source === source ? state.collapsed : []);
+      for (const start of next) if (start < scrollTo.line && scrollTo.line <= (folds.get(start) ?? start)) next.delete(start);
+      return { source, collapsed: next };
+    });
+  }, [scrollTo, folds]);
+  useEffect(() => {
     if (scrollTo !== null) scrollToLine(containerRef.current, scrollTo.line);
-  }, [scrollTo, rows]);
+  }, [scrollTo, rows, foldState]);
 
-div.bdt-code(ref={containerRef} role="region" aria-label={label} tabIndex={0} onMouseLeave={() => onLeave?.()})
+div.bdt-code(ref={containerRef} role="region" aria-label={label} tabIndex={0} style={language === 'tsrx' ? { tabSize: 2 } : undefined} onMouseLeave={() => onLeave?.()})
   .bdt-code-inner
-    each row in rows key row.number
+    each row in visibleRows key row.number
       div(
         ~ data-line={row.number}
         ~ className={cx('bdt-line', inRange(row.number) && 'is-range', linkedLines.has(row.number) && 'is-linked', row.number === activeLine && 'is-active', row.number === errorLine && 'is-error')}
         ~ onMouseEnter={() => onLineEnter?.(row.number)}
         ~ onClick={() => onLineClick?.(row.number)}
         ~ )
-        if onLineClick !== undefined
+        if folds.has(row.number)
+          button.bdt-ln(type="button" aria-label={`${collapsed.has(row.number) ? 'Expand' : 'Collapse'} block at line ${row.number}`} aria-expanded={!collapsed.has(row.number)} onClick={(event) => { event.stopPropagation(); toggleFold(row.number); }})
+            | #{row.number}
+            span.bdt-fold-indicator(aria-hidden="true") #{collapsed.has(row.number) ? '⠒' : '⌄'}
+        elseif onLineClick !== undefined
           button.bdt-ln(type="button" aria-label={`Select line ${row.number}`} onClick={(event) => { event.stopPropagation(); onLineClick(row.number); }}) #{row.number}
         else
           span.bdt-ln #{row.number}
@@ -62,3 +85,5 @@ div.bdt-code(ref={containerRef} role="region" aria-label={label} tabIndex={0} on
         span.bdt-src
           each token, index in row.tokens key index
             span(className={`tk-${token.type}`}) #{token.value}
+          if collapsed.has(row.number)
+            span.bdt-dim #{` … ${folds.get(row.number)! - row.number} lines`}

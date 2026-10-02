@@ -51,6 +51,7 @@
   "files": [
     "dist",
     "client",
+    "components",
     "shared",
     "assets",
     "!**/*.test.ts",
@@ -109,5 +110,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@octanejs/motion": "^0.1.57"
   }
 }

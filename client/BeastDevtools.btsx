@@ -60,7 +60,7 @@ component DevtoolsInterface
       ComponentFinderIcon
     button( type="button" className={cx('bdt-launcher-element-picker bg-white/70 backdrop-blur-3xl hover:text-active!', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})
       ElementPickerIcon
-    button.bdt-launcher(className=' backdrop-blur-3xl' type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
+    button.bdt-launcher(className='backdrop-blur-3xl' type="button" title="Open Beast DevTools (Alt+Shift+D)" onClick={() => setOpen(true)})
       BeastLogo
 
 setup

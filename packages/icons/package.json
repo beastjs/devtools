@@ -1,0 +1,16 @@
+{
+  "name": "@beast-ui/icons",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsrx-tsc --noEmit"
+  },
+  "peerDependencies": {
+    "octane": "0.4.3"
+  }
+}

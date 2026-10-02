@@ -253,6 +253,15 @@ describe('manual extraction', () => {
   ].join('\n')
   const settings = { depthLimit: 20, minLines: 200 }
 
+  test('selecting a parent finds child patterns within its subtree', () => {
+    const source = ['main', '  section', '    button Save', '    button Cancel', '    nav', '      a(href="/") Home', '      a(href="/docs") Docs', '  footer', '    p First', '    p Second', ''].join('\n')
+    const suggestions = analyze(source, settings, 'Fixture', 2).suggestions
+    expect(suggestions[0]!.id).toBe('manual:2')
+    const maps = suggestions.filter((suggestion) => suggestion.kind === 'map')
+    expect(maps.map((suggestion) => suggestion.id)).toEqual(['manual:2:map:3:4', 'manual:2:map:6:7'])
+    expect(new Set(suggestions.map((suggestion) => suggestion.id)).size).toBe(suggestions.length)
+  })
+
   test('selects a complete block below automatic thresholds and infers its name and props', () => {
     expect(analyze(source, settings).suggestions).toEqual([])
     const [selected] = analyze(source, settings, 'Fixture', 3).suggestions

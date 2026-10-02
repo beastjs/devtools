@@ -37,7 +37,7 @@ const EDITABLE_PROPERTIES = new Set([
 // Replacing these drops element children, so only offer them on text-only elements.
 const TEXT_PROPERTIES = new Set(['textContent', 'innerText'])
 const PROTECTED_ATTRIBUTES = new Set([SOURCE_ATTRIBUTE, COMPONENT_ATTRIBUTE])
-export const COMMON_STYLES = new Set(['display', 'position', 'width', 'height', 'min-width', 'max-width', 'min-height', 'max-height', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'gap', 'align-items', 'justify-content', 'color', 'background-color', 'font-size', 'font-weight', 'line-height', 'border-radius', 'border-width', 'border-color', 'opacity', 'overflow', 'box-shadow'])
+export const COMMON_STYLES = new Set(['flex-direction', 'flex-wrap', 'align-items', 'align-content', 'justify-content', 'grid-template-columns', 'grid-template-rows', 'flex-grow', 'flex-shrink', 'display', 'position', 'width', 'height', 'min-width', 'max-width', 'min-height', 'max-height', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'gap', 'align-items', 'justify-content', 'color', 'background-color', 'font-size', 'font-weight', 'line-height', 'border-radius', 'border-width', 'border-color', 'opacity', 'overflow', 'box-shadow'])
 
 export function elementLabel(element: Element): string {
   return `${element.localName}${element.id ? `#${element.id}` : ''}`
