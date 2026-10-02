@@ -145,19 +145,23 @@ setup
     if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
   };
 
-  // Picking selects the editor tab without changing whether the dock is open.
+  // Hide the dock while picking so it does not cover the page's elements.
   useEffect(() => {
     if (activeElementTool === null) return;
-    if (activeElementTool === 'element-picker') return startElementPicker(
-      (element) => {
-        const inspection = elementInspections.current.get(element) ?? new ElementInspection(element);
-        elementInspections.current.set(element, inspection);
-        setElementInspection(inspection);
-        setActiveElementTool(null);
-        setTab('elements');
-      },
-      () => setActiveElementTool(null),
-    );
+    setOpen(false);
+    if (activeElementTool === 'element-picker') {
+      return startElementPicker(
+        (element) => {
+          const inspection = elementInspections.current.get(element) ?? new ElementInspection(element);
+          elementInspections.current.set(element, inspection);
+          setElementInspection(inspection);
+          setActiveElementTool(null);
+          setTab('elements');
+          if (element.localName !== 'rect') setOpen(true);
+        },
+        () => setActiveElementTool(null),
+      );
+    }
     return startComponentFinder(
       (source) => {
         setActiveElementTool(null);
