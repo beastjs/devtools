@@ -82,9 +82,9 @@
   --bdt-syntax-selector: #216f89;
   --bdt-syntax-attr: #7346a3;
   --bdt-syntax-type: #18796b;
-  --bdt-bg: #fafafa;
-  --bdt-bg-2: #f4f4f5;
-  --bdt-bg-3: #e4e4e7;
+  --bdt-bg: oklch(0.971 0.004 286.33);
+  --bdt-bg-2: #efefef;
+  --bdt-bg-3: #eaeaea;
   --bdt-bg-4: #e4e4e7;
   --bdt-line: #18181b18;
   --bdt-line-2: #18181b30;
@@ -545,7 +545,7 @@ html.bdt-resizing * {
   padding: 0 6px;
   border: 0.33px solid var(--bdt-line-2);
   border-radius: 6px;
-  background: var(--bdt-bg-3);
+  background: var(--bdt-bg);
   color: var(--bdt-text);
   font-size: 12px;
   font-weight: 500;
@@ -564,7 +564,7 @@ html.bdt-resizing * {
   padding: 0 6px;
   border: 0.33px solid var(--bdt-line-2);
   border-radius: 6px;
-  background: var(--bdt-bg-3);
+  background: var(--bdt-bg);
   color: var(--bdt-text);
   font-size: 12px;
   font-weight: 500;
@@ -1345,6 +1345,7 @@ html.bdt-resizing * {
   gap: 8px;
   padding: 10px;
   border-bottom: 1px solid var(--bdt-line);
+  background: var(--bdt-bg);
 }
 
 .bdt-metric {
