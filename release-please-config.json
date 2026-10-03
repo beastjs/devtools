@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "c272824e95c8dfdfe08d632ae3c3c08647b2e43b",
+  "release-type": "node",
+  "include-component-in-tag": false,
+  "include-v-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "packages": {
+    ".": {
+      "package-name": "@beastjs/devtools",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

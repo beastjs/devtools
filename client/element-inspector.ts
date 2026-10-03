@@ -1,5 +1,5 @@
 import { fetchFile, saveElementEdit, undoRefactor } from './api.ts'
-import { DEFAULT_SETTINGS, type ElementEditRequest, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
+import { DEFAULT_SETTINGS, type ElementEditRequest, type ElementStyleTarget, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
 
 export type ElementPropertyGroup = 'styles' | 'attributes' | 'properties'
 export interface ElementProperty {
@@ -123,6 +123,9 @@ export class ElementInspection {
   #version = 0
   #saved: Array<{ id: string; hash: string }> = []
   #listeners = new Set<() => void>()
+  styleTarget: ElementStyleTarget = 'inline'
+  cssPath = ''
+  cssSelector = ''
   saving = false
   error: string | null = null
   subscribe(listener: () => void): () => void {
@@ -161,7 +164,7 @@ export class ElementInspection {
     const location = this.#location()
     if (!location || !this.#hash) throw new Error(this.error ?? 'The source file could not be loaded. Pick the element again.')
     const previous = this.#hash
-    const result = await saveElementEdit({ ...location, hash: previous, tag: this.element.localName, ...change })
+    const result = await saveElementEdit({ ...location, hash: previous, tag: this.element.localName, ...change, ...(change.group === 'styles' ? { styleTarget: this.styleTarget, cssPath: this.cssPath, cssSelector: this.cssSelector } : {}) })
     this.#hash = result.hash
     this.#saved.push({ id: result.undoId, hash: previous })
     if (this.#saved.length > MAX_UNDO_STEPS) this.#saved.shift()
@@ -170,14 +173,23 @@ export class ElementInspection {
   async edit(group: ElementPropertyGroup, name: string, value: string | null): Promise<void> {
     this.#check()
     const version = this.#version
+    const element = this.element
+    const beforeStyle = group === 'styles' ? element.getAttribute('style') : null
     this.#editLive(group, name, value)
-    if (this.#version === version) return
+    if (this.#version === version) {
+      if (group !== 'styles' || this.styleTarget === 'inline') return
+      this.#pushUndo(() => {})
+    }
     this.saving = true
     this.error = null
     this.#notify()
     try {
       await this.#save({ group, name, value: group === 'properties' ? Reflect.get(this.element, name) as string | number | boolean : value,
         ...(group === 'styles' ? { declarations: { [name]: value }, cssText: inlineStyle(this.element).cssText } : {}) })
+      if (group === 'styles' && this.styleTarget !== 'inline') {
+        if (beforeStyle === null) element.removeAttribute('style')
+        else element.setAttribute('style', beforeStyle)
+      }
     } catch (error) {
       this.#undo.pop()?.()
       this.error = error instanceof Error ? error.message : String(error)
@@ -258,6 +270,7 @@ export class ElementInspection {
         this.#notify()
         try {
           await this.#save({ group: 'styles', name: '', value: null, declarations, cssText: style.cssText })
+          if (this.styleTarget !== 'inline') restore()
           this.#pushUndo(restore)
           if (this.#undo.length > MAX_UNDO_STEPS) this.#undo.shift()
         } catch (error) {

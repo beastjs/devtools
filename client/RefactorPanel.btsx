@@ -34,7 +34,7 @@ module
 
   /** Why a chosen name would be refused, or null when it is usable. */
   function nameIssue(suggestion: RefactorSuggestion, name: string): string | null {
-    if (suggestion.kind === 'continuation') return null
+    if (suggestion.kind === 'continuation' || suggestion.kind === 'empty-style') return null
     const component = suggestion.mapping === null
     if (name.trim() === '') return 'Enter a name'
     const pattern = component ? /^[A-Z][A-Za-z0-9_$]*$/ : /^[a-z_$][A-Za-z0-9_$]*$/
@@ -42,6 +42,7 @@ module
   }
 
   function targetLabel(target: RefactorTarget, suggestion: RefactorSuggestion): string {
+    if (suggestion.kind === 'empty-style') return 'Remove empty style'
     if (suggestion.kind === 'continuation') return 'Continue props with ~'
     if (suggestion.mapping !== null) return 'map ⧉'
     return target === 'file' ? `create ⯌` : ` hoist ✦`
@@ -51,7 +52,7 @@ module
 
   function targets(suggestion: RefactorSuggestion): RefactorTarget[] {
     if (suggestion.autoApply.blocked !== null) return []
-    if (suggestion.kind === 'continuation' || suggestion.mapping !== null) return ['inline']
+    if (suggestion.kind === 'continuation' || suggestion.kind === 'empty-style' || suggestion.mapping !== null) return ['inline']
     const other: RefactorTarget = suggestion.autoApply.target === 'file' ? 'inline' : 'file'
     const allowed = other === 'file' ? suggestion.autoApply.fileBlocked === null : true
     return allowed ? [suggestion.autoApply.target, other] : [suggestion.autoApply.target]
@@ -68,6 +69,7 @@ module
   }
 
   function kindLabel(suggestion: RefactorSuggestion): string {
+    if (suggestion.kind === 'empty-style') return 'cleanup'
     if (suggestion.kind === 'continuation') return 'continuation'
     if (suggestion.mapping !== null) return `${suggestion.mapping.items.length}× repeated`
     if (suggestion.id.startsWith('manual:')) return 'manual'
@@ -75,7 +77,7 @@ module
   }
 
   function applyGuide(suggestion: RefactorSuggestion): string {
-    if (suggestion.kind === 'continuation') return suggestion.usage
+    if (suggestion.kind === 'continuation' || suggestion.kind === 'empty-style') return suggestion.usage
     const where = suggestion.occurrences.map((range) => `${range.startLine}–${range.endLine}`).join(', ')
     return [
       `// 1. Add above line ${suggestion.insertBeforeLine}:`,
@@ -144,7 +146,8 @@ setup
       setSelectionError(null);
       return;
     }
-    const continuation = suggestions.find((suggestion) => suggestion.kind === 'continuation' && suggestion.startLine === line);
+    const cleanup = suggestions.find((suggestion) => suggestion.kind === 'empty-style' && suggestion.startLine === line);
+    const continuation = cleanup ?? suggestions.find((suggestion) => suggestion.kind === 'continuation' && suggestion.startLine === line);
     if (continuation) {
       selectionRequest.current += 1;
       setSelecting(false);
@@ -345,7 +348,7 @@ setup
                   ~ )
                   .bdt-card-head
                     span(className={cx('bdt-severity', `is-${suggestion.severity}`)} title={suggestion.severity})
-                    if suggestion.kind !== 'continuation' && targets(suggestion).length > 0
+                    if suggestion.kind !== 'continuation' && suggestion.kind !== 'empty-style' && targets(suggestion).length > 0
                       input(
                         ~ className={cx('bdt-card-title', 'bdt-card-title-input', nameIssue(suggestion, nameOf(suggestion)) !== null && 'is-invalid')}
                         ~ value={nameOf(suggestion)}
@@ -371,7 +374,7 @@ setup
                         span.bdt-chip-type #{': ' + prop.type}
                   .bdt-card-actions
                     button.bdt-button(type="button" aria-expanded={openId === suggestion.id} onClick={() => setOpenId(openId === suggestion.id ? null : suggestion.id)}) #{openId === suggestion.id ? '🞁' : '🞃'}
-                    if suggestion.kind !== 'continuation'
+                    if suggestion.kind !== 'continuation' && suggestion.kind !== 'empty-style'
                       button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:component`, suggestion.snippet)}) #{copied === `${suggestion.id}:component` ? 'component ⮻' : 'component ⮺'}
                     button.bdt-button(type="button" onClick={() => copy(`${suggestion.id}:usage`, suggestion.usage.trimStart())}) #{copied === `${suggestion.id}:usage` ? 'usage ⮻' : 'usage ⮺'}
                     button.bdt-button(type="button" onClick={() => openInEditor(current.absolutePath, suggestion.startLine)}) open ⧽
@@ -380,7 +383,7 @@ setup
                       button(
                         ~ type="button"
                         ~ className={cx('bdt-button-critical', index === 0 && '')}
-                        ~ title={suggestion.kind === 'continuation' ? 'Move each prop onto its own ~ continuation line' : suggestion.mapping !== null ? 'Render the repeated elements from an array with each' : target === 'file' ? `Write ${nameOf(suggestion).trim()}.btsx next to this file and import it` : 'Add a local component to this file'}
+                        ~ title={suggestion.kind === 'empty-style' ? 'Remove the empty style attribute from this element' : suggestion.kind === 'continuation' ? 'Move each prop onto its own ~ continuation line' : suggestion.mapping !== null ? 'Render the repeated elements from an array with each' : target === 'file' ? `Write ${nameOf(suggestion).trim()}.btsx next to this file and import it` : 'Add a local component to this file'}
                         ~ disabled={pending?.status === 'applying' || pending?.status === 'loading' || nameIssue(suggestion, nameOf(suggestion)) !== null}
                         ~ onClick={() => preview(suggestion, target)}
                         ~ )

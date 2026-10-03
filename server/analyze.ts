@@ -17,6 +17,7 @@ import type {
   Severity,
   SuggestedProp,
 } from '../shared/types.js'
+import { emptyStyleEdits } from './empty-styles.js'
 import { continuationEdits } from './continuation.js'
 import { attributeValue, replaceSlots, scanSlots, type Slot, type SlotKind, type SlotValue } from './slots.js'
 import { hookCall, identifiersIn, parsePropsParameter, patternNames, topLevelDeclarations } from './source-scan.js'
@@ -217,6 +218,26 @@ export function analyzeDocument(
   }))
 
   if (options.selectionLine === undefined) {
+    const emptyStyles = emptyStyleEdits(document, source)
+    for (const info of hosts.flatMap((host) => host.roots.flatMap(flatten))) {
+      const node = info.node
+      if (node.kind !== 'element') continue
+      const location = `${info.start}:${node.span.start.column}`
+      const edit = emptyStyles.get(location)
+      if (!edit) continue
+      const name = labelOf(node)
+      const range = { startLine: info.start, endLine: node.span.end.line }
+      suggestions.push({
+        ...range, id: `empty-style:${location}`, kind: 'empty-style', severity: 'info',
+        host: info.host.name, name, label: name,
+        reason: 'The style attribute is empty. Remove it to keep the markup clean.',
+        lines: range.endLine - range.startLine + 1, depth: info.depth, reach: info.depth,
+        props: [], snippet: edit.usage, usage: edit.usage, usages: [edit.usage], insertBeforeLine: info.start,
+        occurrences: [range], references: [], body: edit.usage,
+        propsType: null, propsDeclaration: null, typeImports: [], typesDerived: true, mapping: null,
+        autoApply: { target: 'inline', blocked: null, fileBlocked: 'Empty style cleanup edits this file in place.' },
+      })
+    }
     const continuations = continuationEdits(document, source)
     for (const info of hosts.flatMap((host) => host.roots.flatMap(flatten))) {
       const node = info.node

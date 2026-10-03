@@ -207,3 +207,26 @@ test('element edits persist through the JSON endpoint with conflict checks and u
   expect((await post('/undo', { id: undoId })).status).toBe(200)
   expect(readFileSync(running.appPath, 'utf8')).toBe('div Hello\n')
 })
+
+test('element endpoint forwards CSS and Tailwind destinations and supports undo', async () => {
+  const { running, get, post } = await fixture()
+  const source = 'div.card(className="w-10")\n'
+  writeFileSync(running.appPath, source)
+  const cssPath = join(running.root, 'src/styles.css')
+  const css = '.card { width: 10px; }\n'
+  writeFileSync(cssPath, css)
+  const file = await (await get('/file?path=src/App.btsx')).json() as FileReport
+  const request = { path: file.path, hash: file.hash, line: 1, column: 1, tag: 'div', group: 'styles', name: 'width', value: '20px', declarations: { width: '20px' } }
+  expect((await post('/element-edit', { ...request, styleTarget: 'unknown' })).status).toBe(422)
+  const savedCss = await post('/element-edit', { ...request, styleTarget: 'css', cssPath: 'src/styles.css', cssSelector: '.card' })
+  expect(savedCss.status).toBe(200)
+  expect(readFileSync(cssPath, 'utf8')).toContain('width: 20px')
+  expect(readFileSync(running.appPath, 'utf8')).not.toContain('style=')
+  const { undoId } = await savedCss.json()
+  expect((await post('/undo', { id: undoId })).status).toBe(200)
+  expect(readFileSync(cssPath, 'utf8')).toBe(css)
+  const savedClasses = await post('/element-edit', { ...request, styleTarget: 'tailwind' })
+  expect(savedClasses.status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toContain('w-[20px]')
+  expect(readFileSync(running.appPath, 'utf8')).not.toContain('w-10')
+})

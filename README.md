@@ -505,6 +505,12 @@ Edits under `client/` hot-reload in the linked app. Changes to the plugins or
 Contributions should keep production builds untouched, refactors conservative,
 and write endpoints same-origin only.
 
+## Releases
+
+Releases are automated through a Release Please PR on `main`. Merging the PR
+creates the version tag and GitHub release, then publishes to npm with trusted
+publishing. See [release setup, commit conventions, and retries](docs/releasing.md).
+
 ## License
 
 Released under the [ISC License](LICENSE).

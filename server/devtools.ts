@@ -191,12 +191,16 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           body.declarations !== undefined && (body.declarations === null || typeof body.declarations !== 'object' || Array.isArray(body.declarations) || Object.values(body.declarations).some((value) => value !== null && typeof value !== 'string'))) {
           return send(422, { error: 'Invalid element edit.' })
         }
+        if (body.styleTarget !== undefined && !['inline', 'css', 'tailwind'].includes(String(body.styleTarget))) return send(422, { error: 'Invalid style target.' })
         return send(200, selected.project.editElement({
           path: String(body.path ?? ''), hash: String(body.hash ?? ''), line: Number(body.line), column: Number(body.column),
           tag: String(body.tag ?? ''), group: body.group as 'styles' | 'attributes' | 'properties',
           name: String(body.name ?? ''), value: body.value as string | number | boolean | null,
           declarations: body.declarations as Record<string, string | null> | undefined,
           cssText: typeof body.cssText === 'string' ? body.cssText : undefined,
+          styleTarget: body.styleTarget as import('../shared/types.js').ElementStyleTarget | undefined,
+          cssPath: typeof body.cssPath === 'string' ? body.cssPath : undefined,
+          cssSelector: typeof body.cssSelector === 'string' ? body.cssSelector : undefined,
         }))
       }
       if (url.pathname === '/undo') return send(200, selected.project.undo(String(body.id ?? '')))

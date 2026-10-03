@@ -37,7 +37,7 @@ export interface SuggestedProp {
 
 export interface RefactorSuggestion extends LineRange {
   id: string
-  kind: 'extract' | 'duplicate' | 'map' | 'continuation'
+  kind: 'extract' | 'duplicate' | 'map' | 'continuation' | 'empty-style'
   severity: Severity
   /** Component (default or local `component`) the section currently lives in. */
   host: string
@@ -260,6 +260,8 @@ export interface UndoResult {
   summary: string
 }
 
+export type ElementStyleTarget = 'inline' | 'css' | 'tailwind'
+
 /** A source-backed edit made by the Elements panel or layout handles. */
 export interface ElementEditRequest {
   path: string
@@ -272,6 +274,9 @@ export interface ElementEditRequest {
   value: string | number | boolean | null
   declarations?: Record<string, string | null>
   cssText?: string
+  styleTarget?: ElementStyleTarget
+  cssPath?: string
+  cssSelector?: string
 }
 export interface ElementEditResult {
   hash: string

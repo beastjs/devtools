@@ -1,6 +1,7 @@
 import { basename, dirname, join } from 'node:path'
 import type { BeastDocument, ModuleDeclaration } from 'beast-tsrx'
 import type { LineRange, RefactorSuggestion, RefactorTarget, TypeImport } from '../shared/types.js'
+import { removeEmptyStyles } from './empty-styles.js'
 import { renderMapping } from './analyze.js'
 import { parseImport, renderImport, topLevelDeclarations, type Declaration, type ImportSpecifier } from './source-scan.js'
 
@@ -55,6 +56,10 @@ export function planRefactor(input: PlanInput): RefactorPlan {
   if (suggestion.autoApply.blocked !== null) throw new RefactorError(suggestion.autoApply.blocked, 422)
   if (target === 'file' && suggestion.autoApply.fileBlocked !== null) {
     throw new RefactorError(suggestion.autoApply.fileBlocked, 422)
+  }
+  if (suggestion.kind === 'empty-style') return {
+    component: '', summary: `Removed empty style from ${suggestion.label} on line ${suggestion.startLine}`,
+    changes: [{ absolutePath: input.absolutePath, before: input.source, after: removeEmptyStyles(input.document, input.source, suggestion.id.slice('empty-style:'.length)) }],
   }
   if (suggestion.mapping !== null) return planMapping(input)
   return target === 'inline' ? planInline(input) : planFile(input)

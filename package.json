@@ -118,6 +118,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@octanejs/motion": "^0.1.57"
+    "@octanejs/motion": "^0.1.57",
+    "postcss": "^8.5.28",
+    "tailwind-merge": "^3.7.0"
   }
 }

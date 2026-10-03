@@ -24,6 +24,20 @@ export interface ComponentFinderSource {
 /** The overlay's own host; it stays clickable while either tool is active. */
 const OVERLAY_HOST = 'beast-devtools'
 
+/** Consume Escape once, before the page or another picker can handle it. */
+export function listenForPickerEscape(onCancel: () => void): () => void {
+  const cleanup = () => window.removeEventListener('keydown', onKeyDown, true)
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    cleanup()
+    onCancel()
+  }
+  window.addEventListener('keydown', onKeyDown, true)
+  return cleanup
+}
+
 /** Find a component and its source file; returns cleanup. */
 export function startComponentFinder(onComponentFound: (source: ComponentFinderSource) => void, onCancel: () => void): () => void {
   return startElementTool(onComponentFound, onCancel, 'component-finder')
@@ -147,12 +161,7 @@ function startElementTool(onComponentFound: (source: ComponentFinderSource) => v
     const source = element === null ? null : readComponentSource(element)
     if (source !== null) onComponentFound(source)
   }
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    onCancel()
-  }
+  const stopEscape = listenForPickerEscape(onCancel)
 
   const capture = { capture: true } as const
   const presses = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'dblclick', 'contextmenu'] as const
@@ -162,7 +171,6 @@ function startElementTool(onComponentFound: (source: ComponentFinderSource) => v
   window.addEventListener('scroll', onScroll, capture)
   window.addEventListener('resize', onScroll)
   window.addEventListener('click', onClick, capture)
-  window.addEventListener('keydown', onKeyDown, capture)
   for (const type of presses) window.addEventListener(type, onPress, capture)
 
   return () => {
@@ -173,7 +181,7 @@ function startElementTool(onComponentFound: (source: ComponentFinderSource) => v
     window.removeEventListener('scroll', onScroll, capture)
     window.removeEventListener('resize', onScroll)
     window.removeEventListener('click', onClick, capture)
-    window.removeEventListener('keydown', onKeyDown, capture)
+    stopEscape()
     for (const type of presses) window.removeEventListener(type, onPress, capture)
     document.documentElement.classList.remove(activeToolClass)
     box.remove()

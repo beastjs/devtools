@@ -9,7 +9,7 @@ import InspectorPanel from './InspectorPanel.btsx'
 import RefactorPanel from './RefactorPanel.btsx'
 import Topbar from './Topbar.btsx'
 import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
-import { startComponentFinder, startElementPicker, type ElementTool } from './element-tools.ts'
+import { listenForPickerEscape, startComponentFinder, startElementPicker, type ElementTool } from './element-tools.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
 import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, TABS, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
 
@@ -97,6 +97,7 @@ setup
   const elementInspections = useRef(new WeakMap<Element, ElementInspection>());
   const [elementInspection, setElementInspection] = useState<ElementInspection | null>(null);
   const [activeElementTool, setActiveElementTool] = useState<ElementTool | null>(null);
+  const deselectElement = () => { setActiveElementTool(null); setElementInspection(null); };
   const componentFinderActive = activeElementTool === 'component-finder';
   const elementPickerActive = activeElementTool === 'element-picker';
   const elementPickerTitle = elementPickerActive ? 'Stop Element Picker (Esc)' : 'Element Picker (Alt+Shift+E)';
@@ -147,6 +148,11 @@ setup
     if (!open && event.target === event.currentTarget && event.propertyName === 'visibility') setDocked(false);
   };
 
+  // Escape also deselects after a pick, including when the dock is closed.
+  // Register before the picker/drag handlers so one press exits the whole selection.
+  useEffect(() => activeElementTool !== null || elementInspection !== null
+    ? listenForPickerEscape(deselectElement) : undefined, [activeElementTool, elementInspection]);
+
   // Hide the dock while picking so it does not cover the page's elements.
   useEffect(() => {
     if (activeElementTool === null) return;
@@ -161,7 +167,7 @@ setup
           setTab('elements');
           if (element.localName !== 'rect') setOpen(true);
         },
-        () => setActiveElementTool(null),
+        deselectElement,
       );
     }
     return startComponentFinder(
@@ -169,7 +175,7 @@ setup
         setActiveElementTool(null);
         openInEditor(source.path, source.line, source.column);
       },
-      () => setActiveElementTool(null),
+      deselectElement,
     );
   }, [activeElementTool]);
 

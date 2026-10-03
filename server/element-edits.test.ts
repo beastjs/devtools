@@ -38,7 +38,8 @@ test('layout dimensions preserve dynamic styles and continuation source line pos
   const { project, filename, request } = fixture(source)
   project.editElement({ ...request, line: 3, group: 'styles', name: '', value: null, declarations: { width: '320px', 'margin-left': '12px' } })
   const after = readFileSync(filename, 'utf8')
-  expect(after).toContain('...({ color })')
+  expect(after).toContain('style={{ color,')
+  expect(after).not.toContain('...(')
   expect(after).toContain('"width": "320px"')
   expect(after).toContain('"margin-left": "12px"')
   const node = parse(after).children[0]!
@@ -107,4 +108,95 @@ test('computed style strings are refused rather than losing expressions', () => 
   const { project, filename, request } = fixture(source)
   expect(() => project.editElement({ ...request, line: 3, group: 'styles', declarations: { width: '10px' }, cssText: 'color: red; width: 10px;' })).toThrow('computed outside')
   expect(readFileSync(filename, 'utf8')).toBe(source)
+})
+
+
+test('repeated inline edits replace camelCase aliases and removal deletes the member', () => {
+  const source = 'setup\n  const color = "red";\ndiv(style={{ color, marginLeft: "2px", width: "10px" }})\n'
+  const { project, filename, request } = fixture(source)
+  const first = project.editElement({ ...request, line: 3, group: 'styles', declarations: { width: '20px', 'margin-left': '5px' } })
+  const second = project.editElement({ ...request, hash: first.hash, line: 3, group: 'styles', declarations: { width: '30px' } })
+  const after = readFileSync(filename, 'utf8')
+  expect(after).not.toContain('10px')
+  expect(after).not.toContain('20px')
+  expect(after).not.toContain('marginLeft')
+  expect(after).toContain('color,')
+  expect(after.match(/"width"/g)).toHaveLength(1)
+  project.editElement({ ...request, hash: second.hash, line: 3, group: 'styles', declarations: { width: null } })
+  expect(readFileSync(filename, 'utf8')).not.toContain('width')
+})
+
+test('old spread wrappers are flattened while unrelated dynamic values survive', () => {
+  const source = 'setup\n  const color = "red";\ndiv(style={{ ...({ ...({ color, width: "10px" }), "width": "20px" }), "width": "30px" }})\n'
+  const { project, filename, request } = fixture(source)
+  project.editElement({ ...request, line: 3, group: 'styles', declarations: { width: '40px' } })
+  const after = readFileSync(filename, 'utf8')
+  expect(after).toContain('style={{ color, "width": "40px" }}')
+})
+
+test('Tailwind replaces conflicting utilities, preserves variants, and supports repeated edits', () => {
+  const { project, filename, request } = fixture('div.card(className="w-10 hover:w-20 p-4 text-red-500 text-lg")\n')
+  const first = project.editElement({ ...request, group: 'styles', styleTarget: 'tailwind', declarations: { width: '30px', 'padding-left': '8px', color: 'blue' } })
+  const after = readFileSync(filename, 'utf8')
+  expect(after).not.toContain(' w-10')
+  expect(after).toContain('hover:w-20')
+  expect(after).toContain('text-lg')
+  expect(after).not.toContain('text-red-500')
+  expect(after).toContain('pt-4 pr-4 pb-4')
+  expect(after).toContain('pl-[8px]')
+  const second = project.editElement({ ...request, hash: first.hash, group: 'styles', styleTarget: 'tailwind', declarations: { width: '40px' } })
+  expect(readFileSync(filename, 'utf8')).not.toContain('w-[30px]')
+  expect(readFileSync(filename, 'utf8')).toContain('w-[40px]')
+  project.editElement({ ...request, hash: second.hash, group: 'styles', styleTarget: 'tailwind', declarations: { width: null } })
+  expect(readFileSync(filename, 'utf8')).not.toContain('w-[40px]')
+})
+
+test('CSS file edits replace declarations and undo restores both files exactly', () => {
+  const source = 'div.card(style={{ width: "5px", color: "red" }})\n'
+  const { project, filename, request } = fixture(source)
+  const cssPath = join(filename, '../styles.css')
+  const css = '.card { width: 10px; color: blue; width: 20px; }\n.other { width: 1px; }\n'
+  writeFileSync(cssPath, css)
+  const result = project.editElement({ ...request, group: 'styles', styleTarget: 'css', cssPath: 'src/styles.css', cssSelector: '.card', declarations: { width: '30px !important' } })
+  const after = readFileSync(cssPath, 'utf8')
+  expect(after).toContain('width: 30px !important')
+  expect(after).not.toContain('20px')
+  expect(after).not.toContain('10px')
+  expect(after).toContain('.other { width: 1px; }')
+  expect(readFileSync(filename, 'utf8')).not.toContain('width')
+  project.undo(result.undoId)
+  expect(readFileSync(filename, 'utf8')).toBe(source)
+  expect(readFileSync(cssPath, 'utf8')).toBe(css)
+})
+
+test('missing or ambiguous CSS selectors and computed Tailwind classes leave files untouched', () => {
+  const source = 'setup\n  const classes = "w-10";\ndiv(className={classes})\n'
+  const { project, filename, request } = fixture(source)
+  const cssPath = join(filename, '../styles.css')
+  writeFileSync(cssPath, '.card { width: 10px; }\n@media (min-width: 10px) { .card { width: 20px; } }')
+  const edit = { ...request, line: 3, group: 'styles' as const, declarations: { width: '30px' } }
+  expect(() => project.editElement({ ...edit, styleTarget: 'tailwind' })).toThrow('literal className')
+  expect(() => project.editElement({ ...edit, styleTarget: 'css', cssPath: 'src/styles.css', cssSelector: '.missing' })).toThrow('No CSS rule')
+  expect(() => project.editElement({ ...edit, styleTarget: 'css', cssPath: 'src/styles.css', cssSelector: '.card' })).toThrow('more than once')
+  expect(readFileSync(filename, 'utf8')).toBe(source)
+})
+
+test('Tailwind keeps independent utility families and replaces enum utilities', () => {
+  const { project, filename, request } = fixture('div(className="bg-cover bg-red-500 bg-[url(image.png)] font-sans font-bold text-lg text-red-500 items-center border-solid border-2 border-red-500 size-10")\n')
+  project.editElement({ ...request, group: 'styles', styleTarget: 'tailwind', declarations: {
+    'background-color': 'blue', 'font-weight': '500', 'font-size': '14px', 'align-items': 'flex-end', 'border-style': 'dashed', width: '40px',
+  } })
+  const after = readFileSync(filename, 'utf8')
+  for (const token of ['bg-cover', 'bg-[url(image.png)]', 'font-sans', 'text-red-500', 'border-2', 'border-red-500', 'h-10', 'w-[40px]', 'items-end', 'border-dashed']) expect(after).toContain(token)
+  for (const token of ['bg-red-500', 'font-bold', 'text-lg', 'items-center', 'border-solid', 'size-10']) expect(after).not.toContain(token)
+})
+
+test('saving to CSS removes only the edited property from inline CSS strings', () => {
+  const { project, filename, request } = fixture('div(style="width: 10px; color: red;")\n')
+  const cssPath = join(filename, '../styles.css')
+  writeFileSync(cssPath, '.card { width: 20px; }')
+  project.editElement({ ...request, group: 'styles', styleTarget: 'css', cssPath: 'src/styles.css', cssSelector: '.card', declarations: { width: '30px' } })
+  expect(readFileSync(filename, 'utf8')).toContain('color: red;')
+  expect(readFileSync(filename, 'utf8')).not.toContain('width')
+  expect(readFileSync(cssPath, 'utf8')).toContain('width: 30px')
 })

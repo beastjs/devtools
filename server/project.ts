@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import {
   BeastCompileError,
@@ -27,6 +27,7 @@ import type {
   RefactorSuggestion,
   UndoResult,
 } from '../shared/types.js'
+import { replaceCssRule } from './style-edits.js'
 import { editElement } from './element-edits.js'
 import { continuationEdits, continueProps } from './continuation.js'
 import { entryComponents } from './entry.js'
@@ -188,7 +189,7 @@ export class BeastProject {
     const found = analysis.suggestions.find((candidate) => candidate.id === request.suggestionId)
     if (found === undefined) throw new RefactorError('That suggestion no longer applies.', 409)
     if (found.kind === 'continuation') return this.continueProps({ ...request, line: found.startLine })
-    const name = request.name?.trim() || found.name
+    const name = found.kind === 'empty-style' ? found.name : request.name?.trim() || found.name
     if (name !== found.name) validateName(name, found, entry.source)
     const suggestion = renameSuggestion(found, name)
 
@@ -246,9 +247,18 @@ export class BeastProject {
     const after = editElement(entry.result.ast, entry.source, request)
     const change = { absolutePath, before: entry.source, after }
     this.#validate(change)
-    this.#write([change])
+    const changes: FileChange[] = [change]
+    if (request.group === 'styles' && request.styleTarget === 'css') {
+      const cssPath = resolve(this.#options.root, request.cssPath ?? '')
+      if (!request.cssSelector?.trim() || !cssPath.endsWith('.css') || !existsSync(cssPath) ||
+        !realpathSync(cssPath).startsWith(realpathSync(this.#options.root) + sep) || cssPath.split(sep).includes('node_modules') ||
+        this.#options.exclude.some((path) => cssPath === path || cssPath.startsWith(path + sep))) throw new RefactorError('Choose an existing CSS file inside the project and a selector.', 422)
+      const before = readFileSync(cssPath, 'utf8')
+      changes.push({ absolutePath: cssPath, before, after: replaceCssRule(before, request.cssSelector.trim(), request.declarations ?? {}) })
+    }
+    this.#write(changes)
     const undoId = randomUUID()
-    this.#applied.set(undoId, { summary: 'Element edit', changes: [change] })
+    this.#applied.set(undoId, { summary: 'Element edit', changes })
     if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
     return { hash: contentHash(after), undoId }
   }
