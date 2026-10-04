@@ -137,7 +137,7 @@ export function replaceTailwindClasses(classes: string[], declarations: Record<s
     if (value !== null && value.trim()) {
       if (/[\[\]\r\n]/.test(value)) throw new RefactorError('This value cannot be represented as a Tailwind arbitrary value.', 422)
       const important = /\s*!important\s*$/i.test(value)
-      const encoded = value.replace(/\s*!important\s*$/i, '').trim().replace(/_/g, '\\_').replace(/\s/g, '_')
+      const encoded = value.replace(/\s*!important\s*$/i, '').trim().replace(/[\\_]/g, '\\$&').replace(/\s/g, '_')
       next.push(`${important ? '!' : ''}${utility(name, encoded)}`)
     }
   }

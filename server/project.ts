@@ -413,7 +413,7 @@ function validateName(name: string, suggestion: RefactorSuggestion, source: stri
       422,
     )
   }
-  const used = (word: string) => new RegExp(`(^|[^\\w$])${word.replace(/\$/g, '\\$')}($|[^\\w$])`).test(source)
+  const used = (word: string) => new RegExp(`(^|[^\\w$])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w$])`).test(source)
   if (used(name)) throw new RefactorError(`${name} is already used in this file. Choose another name.`, 422)
   if (component && suggestion.propsType !== null && used(`${name}Props`)) {
     throw new RefactorError(`${name}Props is already used in this file. Choose another name.`, 422)

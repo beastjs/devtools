@@ -5,7 +5,13 @@ import { join } from 'node:path'
 const root = fileURLToPath(new URL('.', import.meta.url))
 const viewBoxes: Record<string, string> = {}
 const entries = readdirSync(join(root, 'svg')).filter((name) => name.endsWith('.svg')).sort().map((file) => {
-  const source = readFileSync(join(root, 'svg', file), 'utf8').replace(/<!--[\s\S]*?-->/g, '').trim()
+  let source = readFileSync(join(root, 'svg', file), 'utf8')
+  let previous: string
+  do {
+    previous = source
+    source = source.replace(/<!--[\s\S]*?-->/g, '')
+  } while (source !== previous)
+  source = source.trim()
   const match = /^<svg\b([^>]*)>([\s\S]*)<\/svg>$/.exec(source)
   const viewBox = match && /viewBox=["']([^"']+)["']/.exec(match[1]!)?.[1]
   if (!match || !viewBox) throw new Error(`${file}: missing SVG viewBox`)
