@@ -8,7 +8,10 @@ import { createOctaneCompiler } from 'octane/compiler/bundler'
 const dir = new URL('.', import.meta.url).pathname
 const octane = createOctaneCompiler({ root: process.cwd(), environment: 'client', hmr: false, dev: true })
 
-for (const filename of [dir, new URL('../components/', import.meta.url).pathname, new URL('../packages/icons/src/', import.meta.url).pathname].flatMap((folder) => readdirSync(folder).filter((file) => file.endsWith('.btsx')).map((file) => `${folder}${file}`))) {
+const filenames = [dir, new URL('../components/', import.meta.url).pathname, new URL('../packages/icons/src/', import.meta.url).pathname].flatMap((folder) => readdirSync(folder).filter((file) => file.endsWith('.btsx')).map((file) => `${folder}${file}`))
+filenames.push(new URL('../src/components/ui/message-scroller.btsx', import.meta.url).pathname)
+
+for (const filename of filenames) {
   const name = filename.split('/').at(-1)!
   test(`${name} compiles through Beast and Octane`, () => {
     const source = readFileSync(filename, 'utf8')

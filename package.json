@@ -55,6 +55,7 @@
     "dist",
     "client",
     "components",
+    "src/components/ui/message-scroller.btsx",
     "packages/icons/src",
     "shared",
     "assets",
@@ -118,7 +119,18 @@
     "access": "public"
   },
   "dependencies": {
+    "@beast-ui/icons": "^0.1.0",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@octanejs/base-ui": "0.1.55",
     "@octanejs/motion": "^0.1.57",
+    "@replit/codemirror-vim": "^6.4.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cn": "^0.4.0",
     "postcss": "^8.5.28",
     "tailwind-merge": "^3.7.0"
   }

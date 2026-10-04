@@ -277,3 +277,24 @@ test('element endpoint forwards CSS and Tailwind destinations and supports undo'
   expect(readFileSync(running.appPath, 'utf8')).toContain('w-[20px]')
   expect(readFileSync(running.appPath, 'utf8')).not.toContain('w-10')
 })
+
+test('source blocks can be read, edited, conflict-checked and undone through the API', async () => {
+  const { running, get, post } = await fixture()
+  const source = 'section\n  div\n    p Original\n  footer End\n'
+  writeFileSync(running.appPath, source)
+  const selection = { path: 'src/App.btsx', host: 'App', line: 2, kind: 'element' }
+  const response = await get(`/source-block?${new URLSearchParams({ ...selection, line: String(selection.line) })}`)
+  expect(response.status).toBe(200)
+  const report = await response.json()
+  expect(report.code).toBe('  div\n    p Original')
+  const request = { ...selection, hash: report.hash, code: '        div\n          strong Edited\n          p Added' }
+  expect((await post('/block-edit', request, { Origin: 'http://other.example' })).status).toBe(403)
+  expect((await post('/block-edit', { ...request, code: 1 })).status).toBe(422)
+  const saved = await post('/block-edit', request)
+  expect(saved.status).toBe(200)
+  const result = await saved.json()
+  expect(readFileSync(running.appPath, 'utf8')).toContain('  div\n    strong Edited\n    p Added\n  footer End')
+  expect((await post('/block-edit', request)).status).toBe(409)
+  expect((await post('/undo', { id: result.undoId })).status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source)
+})

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'octane'
 import { browseProject, openProject } from './api.ts'
+import Icon from "../packages/icons/src/Icon.btsx";
 
 module
   interface ProjectPickerProps {
@@ -80,8 +81,7 @@ setup
 
 div.bdt-project-picker(ref={container})
   button.bdt-icon-button(ref={trigger} type="button" disabled={working} aria-label="Open project" title={root ? `Open project · ${root}` : 'Open project'} aria-expanded={editing} aria-controls="bdt-project-popover" onClick={() => { setEditing(!editing); setError(null); }})
-    svg(viewBox="0 0 16 16" fill="none" aria-hidden="true")
-      path(d="M2 6V3.5a1 1 0 0 1 1-1h3l1.5 2H13a1 1 0 0 1 1 1V6M2 6h12l-1.5 7h-9L2 6Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round")
+    Icon(name="folder" size={28} className="size-5 text-[#419cff]")
   if external
     button.bdt-button(type="button" disabled={working} onClick={() => { close(); onSelect(''); }}) Back to running app
   if editing

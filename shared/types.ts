@@ -186,6 +186,41 @@ export interface ComponentLocation {
   local: boolean
   /** Value-bearing hooks declared in setup, in call order. */
   hooks: HookBinding[]
+  /** Authored blocks associated with Octane component/control-flow scopes. */
+  blocks?: SourceBlock[]
+}
+
+export interface SourceBlock extends LineRange {
+  host: string
+  scope: string | null
+  kind: string
+  indent: string
+  itemName?: string
+  itemType?: string
+  iterable?: string
+}
+
+export interface SourceBlockSelection {
+  path: string
+  host: string
+  line: number
+  kind: string
+}
+
+export interface SourceBlockReport {
+  path: string
+  hash: string
+  block: SourceBlock
+  code: string
+}
+
+export interface BlockEditRequest extends SourceBlockSelection {
+  hash: string
+  code: string
+}
+
+export interface BlockEditResult extends SourceBlockReport {
+  undoId: string
 }
 
 export interface ProjectReport {

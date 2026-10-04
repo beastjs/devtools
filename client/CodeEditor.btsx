@@ -1,0 +1,22 @@
+import { useLayoutEffect, useRef } from 'octane'
+import { createCodeEditor, type CodeEditorOptions } from './code-editor.ts'
+
+props { source, language, firstLineNumber, label, vim, disabled, onChange, onBlur, onSave, documentKey = '' }: CodeEditorOptions & { documentKey?: string }
+setup
+  const container = useRef<HTMLDivElement | null>(null);
+  const editor = useRef<ReturnType<typeof createCodeEditor> | null>(null);
+  const options = useRef<CodeEditorOptions>({ source, language, firstLineNumber, label, vim, disabled, onChange, onBlur, onSave });
+  options.current = { source, language, firstLineNumber, label, vim, disabled, onChange, onBlur, onSave };
+  useLayoutEffect(() => {
+    if (!container.current) return;
+    const instance = createCodeEditor(container.current, options.current);
+    editor.current = instance;
+    return () => { instance.destroy(); editor.current = null; };
+  }, [documentKey, language]);
+  useLayoutEffect(() => { editor.current?.update(options.current); }, [source, firstLineNumber, label, vim, disabled, onChange, onBlur, onSave]);
+
+div.bdt-editable-code
+  .bdt-code-controls
+    button.bdt-button(type="button" onClick={() => editor.current?.collapseAll()} title="Collapse all code blocks") Collapse all
+    button.bdt-button(type="button" onClick={() => editor.current?.expandAll()} title="Expand all code blocks") Expand all
+  div.bdt-code-editor(ref={container})

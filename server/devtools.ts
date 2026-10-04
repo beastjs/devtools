@@ -60,7 +60,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
   const { root, editorUrl } = options
   const include = options.include ?? ['src']
   const defaults: AnalyzerSettings = { ...DEFAULT_SETTINGS, ...options.analyzer }
-  const project = new BeastProject({ root, include, exclude: [PACKAGE_ROOT], ...(options.entries === undefined ? {} : { entries: options.entries }) })
+  const project = new BeastProject({ root, include, exclude: [PACKAGE_ROOT], sourceTags: options.componentFinder ?? options.elementPicker ?? true, ...(options.entries === undefined ? {} : { entries: options.entries }) })
   const projects = new Map<string, { root: string; project: BeastProject }>()
   const browseFolder = createFolderBrowser()
   const clients = new Set<ServerResponse>()
@@ -122,6 +122,11 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         }
         const settings = readSettings((name) => url.searchParams.get(name), defaults)
         if (url.pathname === '/project') return send(200, selected.project.report(settings))
+        if (url.pathname === '/source-block') {
+          const line = Number(url.searchParams.get('line'))
+          if (!Number.isSafeInteger(line) || line < 1) return send(422, { error: 'Choose a valid source block.' })
+          return send(200, selected.project.sourceBlock({ path: url.searchParams.get('path') ?? '', host: url.searchParams.get('host') ?? '', line, kind: url.searchParams.get('kind') ?? '' }))
+        }
         if (url.pathname === '/file') {
           const line = url.searchParams.get('line')
           if (line !== null && (!Number.isSafeInteger(Number(line)) || Number(line) < 1)) return send(422, { error: 'Choose a valid starting line.' })
@@ -183,6 +188,10 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           path: String(body.path ?? ''), hash: String(body.hash ?? ''),
           line: Number(body.line), dryRun: body.dryRun !== false,
         }))
+      }
+      if (url.pathname === '/block-edit') {
+        if (typeof body.code !== 'string' || typeof body.host !== 'string' || typeof body.kind !== 'string' || !Number.isSafeInteger(body.line) || Number(body.line) < 1) return send(422, { error: 'Invalid code block edit.' })
+        return send(200, selected.project.editBlock({ path: String(body.path ?? ''), hash: String(body.hash ?? ''), host: body.host, kind: body.kind, line: Number(body.line), code: body.code }))
       }
       if (url.pathname === '/element-edit') {
         if (!['styles', 'attributes', 'properties'].includes(String(body.group)) ||

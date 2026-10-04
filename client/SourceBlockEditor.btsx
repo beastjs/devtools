@@ -1,0 +1,123 @@
+import { useEffect, useRef, useState } from 'octane'
+import type { SourceBlockReport, SourceBlockSelection } from '../shared/types.ts'
+import { pinBlockIndent } from '../shared/block-indent.ts'
+import { fetchSourceBlock, onSourceChanged, saveBlockEdit, undoRefactor } from './api.ts'
+import CodeView from './CodeView.btsx'
+import { loadVimMode, storeVimMode } from './code-editor.ts'
+
+module
+  interface EditorState {
+    report: SourceBlockReport | null
+    draft: string
+    loading: boolean
+    saving: boolean
+    stale: boolean
+    error: string | null
+    undoId: string | null
+  }
+  const empty = (): EditorState => ({ report: null, draft: '', loading: false, saving: false, stale: false, error: null, undoId: null })
+  const identity = (selection: SourceBlockSelection | null) => selection === null ? '' : `${selection.path}:${selection.host}:${selection.line}:${selection.kind}`
+  const message = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+props { selection, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; selectionMessage?: string }
+setup
+  const key = identity(selection);
+  const active = useRef(key);
+  active.current = key;
+  const drafts = useRef(new Map<string, EditorState>());
+  const [vim, setVim] = useState(loadVimMode);
+  const [state, setState] = useState<EditorState>(empty);
+  const update = (id: string, change: (previous: EditorState) => EditorState) => {
+    const next = change(drafts.current.get(id) ?? empty());
+    drafts.current.set(id, next);
+    if (active.current === id) setState(next);
+  };
+  const load = async (id: string, target: SourceBlockSelection) => {
+    update(id, (previous) => ({ ...previous, loading: true, error: null }));
+    try {
+      const report = await fetchSourceBlock(target);
+      update(id, (previous) => ({ ...previous, report, draft: report.code, loading: false, stale: false, error: null }));
+    } catch (error) {
+      update(id, (previous) => ({ ...previous, loading: false, error: message(error) }));
+    }
+  };
+  useEffect(() => {
+    if (selection === null) { setState(empty()); return; }
+    const cached = drafts.current.get(key);
+    if (cached) setState(cached);
+    else void load(key, selection);
+  }, [key]);
+  useEffect(() => onSourceChanged((path) => {
+    for (const [id, cached] of drafts.current) {
+      if (cached.report?.path !== path) continue;
+      const { report } = cached;
+      void fetchSourceBlock({ path, host: report.block.host, line: report.block.startLine, kind: report.block.kind }).then((next) => {
+        const current = drafts.current.get(id);
+        if (current?.report && current.report.hash !== next.hash) update(id, (previous) => ({ ...previous, stale: true }));
+      }, () => update(id, (previous) => ({ ...previous, stale: true })));
+    }
+  }), []);
+  const dirty = state.report !== null && state.draft !== state.report.code;
+  const changeDraft = (draft: string) => update(key, (previous) => ({ ...previous, draft, error: null }));
+  const normalize = () => {
+    const current = drafts.current.get(key) ?? state;
+    if (current.report && current.draft !== current.report.code) changeDraft(pinBlockIndent(current.draft, current.report.block.indent));
+  };
+  const toggleVim = () => setVim((enabled) => { storeVimMode(!enabled); return !enabled; });
+  const save = async (draft?: string) => {
+    const current = drafts.current.get(key) ?? state;
+    if (!current.report || current.saving || current.loading || current.stale) return;
+    const id = key;
+    const report = current.report;
+    const code = pinBlockIndent(draft ?? current.draft, report.block.indent);
+    if (code === report.code) return;
+    update(id, (previous) => ({ ...previous, draft: code, saving: true, error: null }));
+    try {
+      const next = await saveBlockEdit({ path: report.path, host: report.block.host, line: report.block.startLine, kind: report.block.kind, hash: report.hash, code });
+      update(id, (previous) => ({ ...previous, report: next, draft: next.code, saving: false, stale: false, undoId: next.undoId }));
+    } catch (error) {
+      update(id, (previous) => ({ ...previous, saving: false, error: message(error) }));
+    }
+  };
+  const reload = () => {
+    const block = state.report?.block;
+    if (selection) void load(key, block ? { path: state.report!.path, host: block.host, line: block.startLine, kind: block.kind } : selection);
+  };
+  const undo = async () => {
+    if (!state.undoId || state.saving || dirty) return;
+    const id = key;
+    update(id, (previous) => ({ ...previous, saving: true, error: null }));
+    try {
+      await undoRefactor(state.undoId);
+      update(id, (previous) => ({ ...previous, saving: false, undoId: null }));
+      if (selection) await load(id, selection);
+    } catch (error) {
+      update(id, (previous) => ({ ...previous, saving: false, error: message(error) }));
+    }
+  };
+
+section.bdt-block-editor(aria-label="Selected source block" aria-busy={state.loading || state.saving})
+  if selection === null
+    .bdt-empty
+      p #{selectionMessage}
+  elseif state.loading
+    .bdt-empty Loading source block…
+  elseif state.report !== null
+    fragment
+      .bdt-editor-toolbar
+        span.bdt-editor-path #{state.report.path}:#{state.report.block.startLine}–#{state.report.block.endLine}
+        span.bdt-dim(title="The block returns to this outer indentation on blur and save; internal nesting is preserved.") Indent pinned: #{state.report.block.indent.replace(/\t/g, '  ').length}
+        span.bdt-dim(role="status") #{dirty ? 'Unsaved' : state.undoId && !state.stale ? 'Saved' : ''}
+        .bdt-spacer
+        button.bdt-button(type="button" aria-pressed={vim} onClick={toggleVim} title="Vim keybindings: i to insert, Escape for normal mode, :w to save") Vim #{vim ? 'on' : 'off'}
+        button.bdt-button(type="button" disabled={!dirty || state.saving || state.stale} onClick={() => save()}) #{state.saving ? 'Saving…' : 'Save'}
+        button.bdt-button(type="button" disabled={!state.undoId || state.saving || dirty} onClick={undo}) Undo
+        button.bdt-button(type="button" disabled={state.saving} onClick={reload} title="Reload source and discard this draft") #{dirty ? 'Discard' : 'Reload'}
+      if state.stale
+        p.bdt-editor-error(role="status") Source changed on disk. Your draft is kept; reload before saving.
+      CodeView(source={state.draft} language="btsx" label="Edit source block" firstLineNumber={state.report.block.startLine} documentKey={key} onSourceChange={changeDraft} onBlur={normalize} onSave={save} vim={vim} disabled={state.saving})
+  else
+    .bdt-empty
+      button.bdt-button(type="button" onClick={reload}) Retry loading source
+  if state.error
+    pre.bdt-editor-error(role="alert") #{state.error}

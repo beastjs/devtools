@@ -7,6 +7,8 @@
  * changes; an overlay-only flush produces an identical key and stops there.
  */
 
+import { isRuntimeImplementation } from './runtime-names.ts'
+
 interface HookTreeNode {
   id: number
   name: string
@@ -147,7 +149,7 @@ function publish(next: RuntimeSnapshot): void {
 
 function describe(node: HookTreeNode): RuntimeNode {
   const generated = /^__([A-Za-z]+)\$\d+$/.exec(node.name)
-  const controlFlow = node.kind === 'control-flow' || generated !== null
+  const controlFlow = node.kind === 'control-flow' || generated !== null || isRuntimeImplementation(node.name)
   return {
     id: node.id,
     name: node.name,

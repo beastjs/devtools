@@ -3,6 +3,8 @@ import { codeFolds, hiddenCodeLines } from './code-folds.ts'
 import type { LineRange } from '../shared/types.ts'
 import { highlight, type Language } from './highlight.ts'
 import { cx, scrollToLine, type ScrollTarget } from './util.ts'
+import MessageScroller, { MessageScrollerProvider, MessageScrollerViewport, MessageScrollerContent, MessageScrollerItem, MessageScrollerButton } from '../src/components/ui/message-scroller.btsx'
+import CodeEditor from './CodeEditor.btsx'
 
 module
   interface CodeViewProps {
@@ -22,6 +24,14 @@ module
     onLineEnter?: (line: number) => void
     onLineClick?: (line: number) => void
     onLeave?: () => void
+    /** Supplying this callback enables editing, with the same highlighting and folds. */
+    onSourceChange?: (source: string) => void
+    onBlur?: () => void
+    onSave?: (source: string) => void
+    vim?: boolean
+    disabled?: boolean
+    firstLineNumber?: number
+    documentKey?: string
   }
 
   const EMPTY: readonly number[] = []
@@ -31,7 +41,7 @@ module
     return depth > limit ? 'is-over' : depth === limit ? 'is-near' : ''
   }
 
-props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave }: CodeViewProps
+props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave, onSourceChange, onBlur, onSave, vim = false, disabled = false, firstLineNumber = 1, documentKey = '' }: CodeViewProps
 setup
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rows = useMemo(() => highlight(source, language).map((tokens, index) => ({ number: index + 1, tokens })), [source, language]);
@@ -58,32 +68,39 @@ setup
   useEffect(() => {
     if (scrollTo !== null) scrollToLine(containerRef.current, scrollTo.line);
   }, [scrollTo, rows, foldState]);
-
-div.bdt-code(ref={containerRef} role="region" aria-label={label} tabIndex={0} style={language === 'tsrx' ? { tabSize: 2 } : undefined} onMouseLeave={() => onLeave?.()})
-  .bdt-code-inner
-    each row in visibleRows key row.number
-      div(
-        ~ data-line={row.number}
-        ~ className={cx('bdt-line', inRange(row.number) && 'is-range', linkedLines.has(row.number) && 'is-linked', row.number === activeLine && 'is-active', row.number === errorLine && 'is-error')}
-        ~ onMouseEnter={() => onLineEnter?.(row.number)}
-        ~ onClick={() => onLineClick?.(row.number)}
-        ~ )
-        if folds.has(row.number)
-          button.bdt-ln(type="button" aria-label={`${collapsed.has(row.number) ? 'Expand' : 'Collapse'} block at line ${row.number}`} aria-expanded={!collapsed.has(row.number)} onClick={(event) => { event.stopPropagation(); toggleFold(row.number); }})
-            | #{row.number}
-            span.bdt-fold-indicator(aria-hidden="true") #{collapsed.has(row.number) ? '⠒' : '⌄'}
-        elseif onLineClick !== undefined
-          button.bdt-ln(type="button" aria-label={`Select line ${row.number}`} onClick={(event) => { event.stopPropagation(); onLineClick(row.number); }}) #{row.number}
-        else
-          span.bdt-ln #{row.number}
-        if depths !== null
-          span.bdt-depth
-            if depths[row.number - 1] != null
-              fragment
-                span(className={cx('bdt-depth-bar', depthTone(depths[row.number - 1]!, depthLimit))} style={{ width: `${4 + depths[row.number - 1]! * 5}px` }})
-                span.bdt-depth-num #{depths[row.number - 1]}
-        span.bdt-src
-          each token, index in row.tokens key index
-            span(className={`tk-${token.type}`}) #{token.value}
-          if collapsed.has(row.number)
-            span.bdt-dim #{` … ${folds.get(row.number)! - row.number} lines`}
+if onSourceChange !== undefined
+  CodeEditor(source={source} language={language} firstLineNumber={firstLineNumber} label={label} vim={vim} disabled={disabled} documentKey={documentKey} onChange={onSourceChange} onBlur={onBlur} onSave={onSave})
+else
+  MessageScrollerProvider(autoScroll={false} defaultScrollPosition="start")
+    MessageScroller(className="bdt-code-scroller" onMouseLeave={() => onLeave?.()})
+      MessageScrollerViewport(className="bdt-code" ref={containerRef} aria-label={label} style={language === 'tsrx' ? { tabSize: 2 } : undefined} preserveScrollOnPrepend={false})
+        MessageScrollerContent(className="bdt-code-inner" role="presentation" aria-live="off")
+          each row, ri in visibleRows key row.number
+            MessageScrollerItem(messageId={`line-${row.number}`} scrollAnchor={ri === visibleRows.length - 1})
+              div(
+                ~ data-line={row.number}
+                ~ className={cx('bdt-line', inRange(row.number) && 'is-range', linkedLines.has(row.number) && 'is-linked', row.number === activeLine && 'is-active', row.number === errorLine && 'is-error')}
+                ~ onMouseEnter={() => onLineEnter?.(row.number)}
+                ~ onClick={() => onLineClick?.(row.number)}
+                ~ )
+                if folds.has(row.number)
+                  button.bdt-ln(type="button" aria-label={`${collapsed.has(row.number) ? 'Expand' : 'Collapse'} block at line ${row.number}`} aria-expanded={!collapsed.has(row.number)} onClick={(event) => { event.stopPropagation(); toggleFold(row.number); }})
+                    | #{row.number}
+                    span.bdt-fold-indicator(aria-hidden="true") #{collapsed.has(row.number) ? '⠒' : '⌄'}
+                elseif onLineClick !== undefined
+                  button.bdt-ln(type="button" aria-label={`Select line ${row.number}`} onClick={(event) => { event.stopPropagation(); onLineClick(row.number); }}) #{row.number}
+                else
+                  span.bdt-ln #{row.number}
+                if depths !== null
+                  span.bdt-depth
+                    if depths[row.number - 1] != null
+                      fragment
+                        span(className={cx('bdt-depth-bar', depthTone(depths[row.number - 1]!, depthLimit))} style={{ width: `${4 + depths[row.number - 1]! * 5}px` }})
+                        span.bdt-depth-num #{depths[row.number - 1]}
+                span.bdt-src
+                  each token, index in row.tokens key index
+                    span(className={`tk-${token.type}`}) #{token.value}
+                  if collapsed.has(row.number)
+                    span.bdt-dim #{` … ${folds.get(row.number)! - row.number} lines`}
+      MessageScrollerButton(direction="start" className="bdt-code-scroll-button")
+      MessageScrollerButton(direction="end" className="bdt-code-scroll-button")

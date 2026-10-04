@@ -4,6 +4,8 @@
  * and folds the providers above it into a single bar.
  */
 import type { RuntimeNode } from './runtime.ts'
+import type { ComponentLocation, SourceBlock, SourceBlockSelection } from '../shared/types.ts'
+import { isRuntimeImplementation } from './runtime-names.ts'
 
 export type ComponentsView = 'blocks' | 'tree'
 
@@ -16,6 +18,8 @@ export interface TreeRow {
   childCount: number
   /** An ancestor of the entry component, shown only when wrappers are revealed. */
   wrapper: boolean
+  mappedCount: number | null
+  memberIds: readonly number[]
 }
 
 export interface Wrappers {
@@ -40,17 +44,56 @@ export function treeRows(
   showControlFlow: boolean,
   query: string,
   wrapperIds: ReadonlySet<number> = new Set(),
+  groupMapped = false,
 ): TreeRow[] {
   const rows: TreeRow[] = []
-  const visit = (node: RuntimeNode, depth: number) => {
+  const item = (node: RuntimeNode) => /^__item\$\d+$/.test(node.name) || node.controlFlow && node.label === '@item'
+  const rowChildren = (node: RuntimeNode): RuntimeNode[] => node.children.flatMap((child) =>
+    groupMapped && isRuntimeImplementation(child.name) || !showControlFlow && child.controlFlow && !(groupMapped && item(child)) ? rowChildren(child) : [child])
+  const visit = (node: RuntimeNode, depth: number, members: readonly RuntimeNode[] = [node]) => {
+    if (groupMapped && isRuntimeImplementation(node.name)) { visitSiblings(rowChildren(node), depth); return }
     if (query !== '' && !matches(node, query, showControlFlow)) return
-    const children = childrenOf(node, showControlFlow)
+    const children = rowChildren(node)
     const open = query !== '' || !collapsed.has(node.id)
-    rows.push({ node, depth, expandable: children.length > 0, open, childCount: children.length, wrapper: wrapperIds.has(node.id) })
-    if (open) children.forEach((child) => visit(child, depth + 1))
+    rows.push({ node, depth, expandable: children.length > 0, open, childCount: children.length, wrapper: wrapperIds.has(node.id), mappedCount: groupMapped && item(node) ? members.length : null, memberIds: members.map((member) => member.id) })
+    if (open) visitSiblings(children, depth + 1)
   }
-  roots.forEach((root) => visit(root, 0))
+  const visitSiblings = (nodes: readonly RuntimeNode[], depth: number) => {
+    const visited = new Set<string>()
+    for (const node of nodes) {
+      if (!groupMapped || !item(node)) { visit(node, depth); continue }
+      if (visited.has(node.name)) continue
+      visited.add(node.name)
+      const members = nodes.filter((candidate) => candidate.name === node.name && item(candidate))
+      // Search all instances, then show the matching instance's template once.
+      const representative = query === '' ? node : members.find((candidate) => matches(candidate, query, showControlFlow))
+      if (representative) visit(representative, depth, members)
+    }
+  }
+  visitSiblings(roots, 0)
   return rows
+}
+
+/** Generated scopes belong to the nearest authored component ancestor. */
+export function sourceSelections(roots: readonly RuntimeNode[], components: readonly ComponentLocation[]): Map<number, { selection: SourceBlockSelection; block: SourceBlock }> {
+  const locations = new Map<string, ComponentLocation[]>()
+  for (const location of components) locations.set(location.name, [...locations.get(location.name) ?? [], location])
+  const result = new Map<number, { selection: SourceBlockSelection; block: SourceBlock }>()
+  const visit = (node: RuntimeNode, host: string) => {
+    const implementation = isRuntimeImplementation(node.name)
+    if (!node.controlFlow && !implementation) host = node.name
+    const candidates = locations.get(host)
+    if (candidates?.length === 1) {
+      const location = candidates[0]!
+      const block = location.blocks?.find((candidate) => candidate.scope === node.name)
+        ?? (implementation ? location.blocks?.find((candidate) => candidate.scope === host && candidate.kind === 'component') : undefined)
+        ?? (!node.controlFlow || implementation ? { host, scope: host, kind: 'component', startLine: location.local ? location.line : 1, endLine: location.line, indent: '' } : undefined)
+      if (block) result.set(node.id, { selection: { path: location.path, host, line: block.startLine, kind: block.kind }, block })
+    }
+    node.children.forEach((child) => visit(child, host))
+  }
+  roots.forEach((root) => visit(root, root.name))
+  return result
 }
 
 /** Context providers and routers conventionally carry these suffixes. */

@@ -91,3 +91,11 @@ export function saveElementEdit(request: import('../shared/types.ts').ElementEdi
   // Picked DOM elements always belong to the running app, not a browsed project.
   return post('/element-edit', request)
 }
+
+export function fetchSourceBlock(selection: import('../shared/types.ts').SourceBlockSelection): Promise<import('../shared/types.ts').SourceBlockReport> {
+  return get('/source-block', { ...selection })
+}
+
+export function saveBlockEdit(request: import('../shared/types.ts').BlockEditRequest): Promise<import('../shared/types.ts').BlockEditResult> {
+  return post('/block-edit', request)
+}

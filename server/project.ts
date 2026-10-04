@@ -26,7 +26,15 @@ import type {
   ProjectReport,
   RefactorSuggestion,
   UndoResult,
+  SourceBlock,
+  SourceBlockSelection,
+  SourceBlockReport,
+  BlockEditRequest,
+  BlockEditResult,
 } from '../shared/types.js'
+import { pinBlockIndent } from '../shared/block-indent.js'
+import { sourceBlocks } from './source-blocks.js'
+import { tagSource } from './source-tags.js'
 import { replaceCssRule } from './style-edits.js'
 import { editElement } from './element-edits.js'
 import { continuationEdits, continueProps } from './continuation.js'
@@ -48,6 +56,7 @@ export interface ProjectOptions {
   exclude: readonly string[]
   /** The app's entry modules, as absolute paths; read on every report. */
   entries?: () => readonly string[]
+  sourceTags?: boolean
 }
 
 interface CompiledEntry {
@@ -55,6 +64,7 @@ interface CompiledEntry {
   source: string
   result: ReturnType<typeof compileBeastResult> | null
   error: BeastDiagnostic | null
+  blocks?: SourceBlock[]
 }
 
 interface AppliedRefactor {
@@ -110,7 +120,10 @@ export class BeastProject {
         suggestions: analysis.suggestions.length,
         error: null,
       })
-      components.push(...componentLocations(entry.result.ast, absolutePath, path))
+      const blocks = this.#blocks(entry, absolutePath)
+      components.push(...componentLocations(entry.result.ast, absolutePath, path).map((location) => ({
+        ...location, blocks: blocks.filter((block) => block.host === location.name && block.scope !== null),
+      })))
     }
     const entryNames = entryComponents(this.#options.entries?.() ?? [])
     return { root: this.#options.root, settings, files, components, entryComponents: entryNames }
@@ -261,6 +274,64 @@ export class BeastProject {
     this.#applied.set(undoId, { summary: 'Element edit', changes })
     if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
     return { hash: contentHash(after), undoId }
+  }
+
+  sourceBlock(selection: SourceBlockSelection): SourceBlockReport {
+    const absolutePath = this.resolve(selection.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    const entry = this.#compile(absolutePath)
+    const block = this.#blocks(entry, absolutePath).find((candidate) => candidate.host === selection.host && candidate.startLine === selection.line && candidate.kind === selection.kind)
+    if (!block) throw new RefactorError('That source block is no longer available. Select it again.', 409)
+    return { path: this.#relative(absolutePath), hash: contentHash(entry.source), block,
+      code: entry.source.split(/\r?\n/).slice(block.startLine - 1, block.endLine).join('\n') }
+  }
+
+  editBlock(request: BlockEditRequest): BlockEditResult {
+    const absolutePath = this.resolve(request.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    this.invalidate(absolutePath)
+    const entry = this.#compile(absolutePath)
+    if (contentHash(entry.source) !== request.hash) throw new RefactorError('The source file changed. Reload the block before saving.', 409)
+    const original = this.sourceBlock(request)
+    const code = pinBlockIndent(request.code, original.block.indent)
+    if (!code.trim()) throw new RefactorError('A code block cannot be empty.', 422)
+    const lines = entry.source.split(/\r?\n/)
+    const eol = entry.source.includes('\r\n') ? '\r\n' : '\n'
+    lines.splice(original.block.startLine - 1, original.block.endLine - original.block.startLine + 1, ...code.split('\n'))
+    let after = lines.join(eol)
+    if (original.block.endLine === entry.source.split('\n').length && entry.source.endsWith('\n')) after += eol
+    const change = { absolutePath, before: entry.source, after }
+    this.#validate(change)
+    this.#write([change])
+    const undoId = randomUUID()
+    this.#applied.set(undoId, { summary: 'Code block edit', changes: [change] })
+    if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
+    const next = this.#compile(absolutePath)
+    const nextBlocks = this.#blocks(next, absolutePath)
+    const candidates = nextBlocks.filter((block) => block.host === request.host && block.startLine === request.line)
+    const block = candidates.find((block) => block.kind === request.kind) ?? candidates.find((block) => block.kind !== 'component')
+      ?? (request.kind === 'component' && request.host !== componentNameFromPath(absolutePath)
+        ? nextBlocks.find((block) => block.kind === 'component' && block.host !== componentNameFromPath(absolutePath) && block.startLine === request.line) : undefined)
+    if (!block) return { ...original, hash: contentHash(after), code, undoId }
+    return { ...this.sourceBlock({ ...request, host: block.host, kind: block.kind }), undoId }
+  }
+
+  #blocks(entry: CompiledEntry, absolutePath: string): SourceBlock[] {
+    if (entry.blocks) return entry.blocks
+    if (!entry.result) return []
+    const name = componentNameFromPath(absolutePath)
+    let beast = entry.result
+    let compiled: { code: string; map: import('beast-tsrx').BeastSourceMap } | null = null
+    try {
+      if (this.#options.sourceTags !== false) beast = compileBeastResult(tagSource(entry.source, absolutePath, this.#relative(absolutePath)), { filename: absolutePath, componentName: name })
+      this.#octane ??= createOctaneCompiler({ root: this.#options.root, environment: 'client', hmr: false, dev: true })
+      const result = this.#octane.transform(beast.code, absolutePath.replace(/\.btsx$/, '.tsrx'), { environment: 'client', dev: true })
+      if (result?.map) compiled = { code: result.code, map: result.map as import('beast-tsrx').BeastSourceMap }
+    } catch {
+      // Components remain source-backed even when Octane cannot map a scope.
+    }
+    entry.blocks = sourceBlocks(entry.result.ast, entry.source, name, absolutePath, compiled, beast, (file) => this.#types.resolve(file))
+    return entry.blocks
   }
 
   /** Restore the files an applied refactor touched, if nobody has edited them since. */

@@ -1,9 +1,10 @@
-import { useMemo, useState, useSyncExternalStore } from 'octane'
-import type { ComponentLocation } from '../shared/types.ts'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'octane'
+import type { ComponentLocation, SourceBlockSelection } from '../shared/types.ts'
 import { openInEditor } from './api.ts'
 import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell } from './runtime.ts'
 import Splitter from './Splitter.btsx'
-import { findWrappers, treeRows, type ComponentsView } from './tree.ts'
+import SourceBlockEditor from './SourceBlockEditor.btsx'
+import { findWrappers, treeRows, sourceSelections, type TreeRow, type ComponentsView } from './tree.ts'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
 
 module
@@ -84,16 +85,33 @@ setup
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [showWrappers, setShowWrappers] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<SourceBlockSelection | null>(null);
   const search = query.trim().toLowerCase();
   // Blocks start at the app's entry component; a search always covers everything.
   const wrappers = useMemo(() => findWrappers(runtime.roots, entryComponents, showControlFlow), [runtime.roots, entryComponents, showControlFlow]);
   const hideWrappers = view === 'blocks' && wrappers !== null && !showWrappers && search === '';
   const rows = useMemo(
-    () => treeRows(hideWrappers ? wrappers!.tops : runtime.roots, collapsed, showControlFlow, search, new Set(view === 'blocks' ? (wrappers?.chain.map((node) => node.id) ?? []) : [])),
+    () => treeRows(hideWrappers ? wrappers!.tops : runtime.roots, collapsed, showControlFlow, search, new Set(view === 'blocks' ? (wrappers?.chain.map((node) => node.id) ?? []) : []), view === 'blocks'),
     [runtime.roots, wrappers, hideWrappers, view, collapsed, showControlFlow, search],
   );
+  const sources = useMemo(() => sourceSelections(runtime.roots, components), [runtime.roots, components]);
+  useEffect(() => {
+    if (runtime.selectedId === null) return;
+    const source = sources.get(runtime.selectedId)?.selection;
+    if (source) setSelectedSource((current) => current?.path === source.path && current.host === source.host && current.line === source.line && current.kind === source.kind ? current : source);
+  }, [sources, runtime.selectedId]);
+  const rowSelected = (row: TreeRow) => {
+    if (runtime.selectedId !== null) return row.memberIds.includes(runtime.selectedId);
+    const source = sources.get(row.node.id)?.selection;
+    return selectedSource !== null && source !== undefined && source.path === selectedSource.path && source.host === selectedSource.host && source.line === selectedSource.line && source.kind === selectedSource.kind;
+  };
+  const selectRow = (row: TreeRow) => {
+    selectRuntimeNode(row.node.id);
+    setSelectedSource(sources.get(row.node.id)?.selection ?? null);
+  };
   const detail = runtime.detail;
-  const location = detail === null ? undefined : components.find((component) => component.name === detail.name);
+  const selectedBlock = detail === null ? undefined : sources.get(detail.id)?.block;
+  const location = selectedSource === null ? (detail === null ? undefined : components.find((component) => component.name === detail.name)) : components.find((component) => component.name === selectedSource.host && component.path === selectedSource.path);
   const hooks = detail === null ? [] : hookRows(detail.hooks, location);
   const context = detail === null ? [] : detail.context.map((entry, index) => ({ key: `context-${index}`, label: entry.name, kind: 'context', value: entry.value }));
   const values = [...hooks, ...context];
@@ -167,11 +185,11 @@ else
                 ~ type="button"
                 ~ role="treeitem"
                 ~ aria-level={row.depth + 1}
-                ~ aria-selected={runtime.selectedId === row.node.id}
+                ~ aria-selected={rowSelected(row)}
                 ~ aria-expanded={row.expandable ? row.open : undefined}
-                ~ className={cx('bdt-block', row.depth % 2 === 1 && 'is-odd', runtime.selectedId === row.node.id && 'is-selected', row.wrapper && 'is-wrapper')}
+                ~ className={cx('bdt-block', row.depth % 2 === 1 && 'is-odd', rowSelected(row) && 'is-selected', row.wrapper && 'is-wrapper')}
                 ~ style={{ marginLeft: `${Math.min(row.depth, BLOCK_INDENT_LIMIT) * BLOCK_INDENT}px`, borderLeftColor: DEPTH_COLORS[row.depth % DEPTH_COLORS.length] }}
-                ~ onClick={() => selectRuntimeNode(row.node.id)}
+                ~ onClick={() => selectRow(row)}
                 ~ onDoubleClick={() => row.expandable && toggleNode(row.node.id)}
                 ~ )
                 span(
@@ -185,6 +203,8 @@ else
                 if row.depth > BLOCK_INDENT_LIMIT
                   span.bdt-block-depth(title={`Nested ${row.depth} levels deep`}) L#{row.depth}
                 span.bdt-spacer
+                if row.mappedCount !== null
+                  span.bdt-block-map(title={`${sources.get(row.node.id)?.block.iterable ?? 'Mapped items'} · ${sources.get(row.node.id)?.block.itemType ?? 'unknown'}`}) #{row.mappedCount} item#{row.mappedCount === 1 ? '' : 's'} · #{sources.get(row.node.id)?.block.itemType ?? 'unknown'}
                 if row.expandable && !row.open
                   span.bdt-block-count(title={`${row.childCount} hidden child${row.childCount === 1 ? '' : 'ren'}`}) +#{row.childCount}
                 span.bdt-tree-id ##{row.node.id}
@@ -194,11 +214,11 @@ else
               button(
                 ~ type="button"
                 ~ role="treeitem"
-                ~ aria-selected={runtime.selectedId === row.node.id}
+                ~ aria-selected={rowSelected(row)}
                 ~ aria-expanded={row.expandable ? row.open : undefined}
-                ~ className={cx('bdt-tree-row', runtime.selectedId === row.node.id && 'is-selected')}
+                ~ className={cx('bdt-tree-row', rowSelected(row) && 'is-selected')}
                 ~ style={{ paddingLeft: `${6 + row.depth * 14}px` }}
-                ~ onClick={() => selectRuntimeNode(row.node.id)}
+                ~ onClick={() => selectRow(row)}
                 ~ onDoubleClick={() => row.expandable && toggleNode(row.node.id)}
                 ~ )
                 span(
@@ -212,25 +232,25 @@ else
                 span.bdt-tree-id ##{row.node.id}
     aside.bdt-detail(aria-label="Selected component")
       Splitter(split="detail" edge="start" label="Resize component details")
-      if detail === null
-        .bdt-empty
-          p Select a component to inspect its state, context, and source.
-      else
-        fragment
-          .bdt-detail-head
-            p.bdt-detail-name
-              | #{detail.name}
-              span.bdt-badge ##{detail.id}
-            if location === undefined
-              p.bdt-dim No .btsx declaration found for this name.
-            else
-              fragment
-                button.bdt-link(type="button" title="Open in editor" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) #{location.path}:#{location.line}
-                .bdt-detail-actions
-                  button.bdt-button(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
-                  button.bdt-button(type="button" onClick={() => onAnalyze(location.path)}) Analyze file
-                  button.bdt-button(type="button" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) Open in editor
-          .bdt-scroll
+      if detail !== null
+        .bdt-detail-head
+          p.bdt-detail-name
+            | #{selectedBlock?.kind === 'each' ? `each ${selectedBlock.itemName} in ${selectedBlock.iterable}` : selectedBlock?.host ?? detail.name}
+            span.bdt-badge ##{detail.id}
+          if location === undefined
+            p.bdt-dim No .btsx declaration found for this name.
+          else
+            fragment
+              button.bdt-link(type="button" title="Open in editor" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) #{location.path}:#{location.line}
+              .bdt-detail-actions
+                button.bdt-button(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
+                button.bdt-button(type="button" onClick={() => onAnalyze(location.path)}) Analyze file
+                button.bdt-button(type="button" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) Open in editor
+      SourceBlockEditor(selection={selectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
+      if detail !== null
+        details.bdt-runtime-details
+          summary State, context & effects
+          .bdt-runtime-values
             p.bdt-section-label State & hooks
             if values.length === 0
               p.bdt-dim(style={{ padding: '0 14px' }}) No hook state or context.
