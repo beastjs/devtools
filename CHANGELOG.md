@@ -2,6 +2,22 @@
 
 All notable changes to `@beastjs/devtools` are recorded here.
 
+## 0.1.17 (2026-10-04)
+
+### Added
+
+- Save element style edits to CSS files or Tailwind classes, with conflict
+  checks and undo support.
+- Suggest removing empty inline styles from native elements.
+
+### Fixed
+
+- Replace existing inline style values instead of appending duplicate
+  properties or nested spread wrappers. Preserve unrelated dynamic styles.
+- Cancel element picking with Escape without triggering competing page handlers.
+- Ignore missing filenames in both filesystem watchers, preventing a Bun
+  watcher exception during Rspack integration tests and directory changes.
+
 ## Unreleased
 
 ### Added
