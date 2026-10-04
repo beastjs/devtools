@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, expect, spyOn, test } from 'bun:test'
+import * as fs from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -23,8 +24,40 @@ async function fixture() {
   const post = (path: string, body: unknown, headers = {}) => fetch(`${origin}${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body),
   })
-  return { running, other, get, post }
+  return { running, other, devtools, get, post }
 }
+
+test.each(['running', 'opened'])('%s project watcher ignores missing filenames and still emits source changes', async (project) => {
+  const watched = spyOn(fs, 'watch')
+  try {
+    const { other, devtools, get, post } = await fixture()
+    if (project === 'running') devtools.watch()
+    else expect((await post('/open-project', { path: other.root })).status).toBe(200)
+
+    expect(watched).toHaveBeenCalledTimes(1)
+    const listener = watched.mock.calls[0]![2] as (event: string, name: string | null | undefined) => void
+    expect(() => listener('rename', undefined)).not.toThrow()
+    expect(() => listener('rename', null)).not.toThrow()
+
+    const events = await get('/events')
+    const reader = events.body!.getReader()
+    await reader.read()
+    listener('change', project === 'running' ? 'App.btsx' : join('src', 'App.btsx'))
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      const chunk = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('No source-change event')), 3000) }),
+      ])
+      expect(new TextDecoder().decode(chunk.value)).toContain('"path":"src/App.btsx"')
+    } finally {
+      clearTimeout(timeout)
+      await reader.cancel()
+    }
+  } finally {
+    watched.mockRestore()
+  }
+})
 
 test('opening a folder scopes reads, refactors and undo without changing the running project', async () => {
   const { running, other, get, post } = await fixture()

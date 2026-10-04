@@ -156,7 +156,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         const id = randomUUID()
         const opened = new BeastProject({ root: folder, include: ['.'], exclude: [PACKAGE_ROOT] })
         const watcher = watch(folder, { recursive: true }, (_event, name) => {
-          if (name === null || !name.endsWith('.btsx') || name.split(sep).includes('node_modules')) return
+          if (typeof name !== 'string' || !name.endsWith('.btsx') || name.split(sep).includes('node_modules')) return
           opened.invalidate(resolve(folder, name))
           pending.add(toPosix(name))
           timer ??= setTimeout(flush, NOTIFY_DELAY_MS)
@@ -219,7 +219,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         const absolute = resolve(root, dir)
         if (!existsSync(absolute)) continue
         const watcher = watch(absolute, { recursive: true }, (_event, name) => {
-          if (name !== null) notify(resolve(absolute, name))
+          if (typeof name === 'string') notify(resolve(absolute, name))
         })
         // Without the watcher the overlay still works; it just stops refreshing on save.
         watcher.on('error', (error) => {
