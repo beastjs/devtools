@@ -3,13 +3,7 @@
  * app's Tailwind preflight or global element styles.
  * oklch(0.235 0 89.88)
  */
-@font-face {
-  font-family: 'IOS';
-  src: url('../assets/fonts/IoskeleyMono-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: fallback;
-}
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100..900;1,100..900&display=swap');
 @font-face {
   font-family: 'OKX';
   src: url('../assets/fonts/okxs-regular.woff2') format('woff2');
@@ -60,7 +54,7 @@
   --bdt-active: oklch(0.6278 0.204 254.62);
   --bdt-active-soft: oklch(0.6278 0.204 254.62);
   --color-active-soft: oklch(0.6278 0.204 254.62);
-  --bdt-mono: IOS, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --bdt-mono: Geist Mono, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   /* Long, soft landing for things arriving; a quicker, accelerating exit. */
   --bdt-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --bdt-ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
@@ -522,12 +516,13 @@ html.bdt-resizing * {
 .bdt-toolbar {
   display: flex;
   align-items: center;
+  /*justify-content: space-between;*/
   gap: 8px;
   min-height: 36px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--bdt-line);
   flex: none;
-  flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .bdt-toolbar-title {
@@ -633,6 +628,7 @@ html.bdt-resizing * {
   color: var(--bdt-muted);
   white-space: nowrap;
   cursor: pointer;
+  flex: 1;
 }
 
 .bdt-check input {
@@ -651,7 +647,7 @@ html.bdt-resizing * {
   border-radius: 5px;
   border: 0.33px solid var(--bdt-line-2);
   color: var(--bdt-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   letter-spacing: -0.03em;
@@ -1051,7 +1047,7 @@ html.bdt-resizing * {
 }
 
 .bdt-detail-head {
-  display: grid;
+  display: flex;
   gap: 6px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--bdt-line);
@@ -1129,6 +1125,48 @@ html.bdt-resizing * {
   gap: 6px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--bdt-line);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.bdt-mini-refactor {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--bdt-line);
+}
+
+.bdt-mini-refactor .bdt-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.bdt-root .bdt-class-keyword {
+  cursor: pointer;
+}
+.bdt-root .bdt-class-keyword:hover {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.bdt-root .bdt-class-fold {
+  display: inline;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--bdt-dim);
+  background: var(--bdt-bg-3);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bdt-root .bdt-class-fold:hover {
+  color: var(--bdt-info);
+  background: var(--bdt-bg-4);
+}
+
+.bdt-root .bdt-code-editor .bdt-refactor-line {
+  background: color-mix(in srgb, var(--bdt-warn) 10%, transparent);
 }
 
 .bdt-root .bdt-code-editor .cm-editor {

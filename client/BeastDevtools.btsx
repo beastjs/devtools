@@ -283,6 +283,7 @@ if open || docked
       switch tab
         case 'components'
           ComponentsPanel(
+            ~ settings={debouncedSettings}
             ~ components={runtimeProject?.components ?? EMPTY_COMPONENTS}
             ~ entryComponents={runtimeProject?.entryComponents ?? EMPTY_STRINGS}
             ~ view={componentsView}

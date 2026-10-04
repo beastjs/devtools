@@ -5,6 +5,7 @@ import { highlight, type Language } from './highlight.ts'
 import { cx, scrollToLine, type ScrollTarget } from './util.ts'
 import MessageScroller, { MessageScrollerProvider, MessageScrollerViewport, MessageScrollerContent, MessageScrollerItem, MessageScrollerButton } from '../src/components/ui/message-scroller.btsx'
 import CodeEditor from './CodeEditor.btsx'
+import { classRanges, classDisplayTokens, toggleClassOverrides } from './class-folds.ts'
 
 module
   interface CodeViewProps {
@@ -32,6 +33,7 @@ module
     disabled?: boolean
     firstLineNumber?: number
     documentKey?: string
+    classControls?: boolean
   }
 
   const EMPTY: readonly number[] = []
@@ -41,10 +43,20 @@ module
     return depth > limit ? 'is-over' : depth === limit ? 'is-near' : ''
   }
 
-props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave, onSourceChange, onBlur, onSave, vim = false, disabled = false, firstLineNumber = 1, documentKey = '' }: CodeViewProps
+props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave, onSourceChange, onBlur, onSave, vim = false, disabled = false, firstLineNumber = 1, documentKey = '', classControls = false }: CodeViewProps
 setup
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const rows = useMemo(() => highlight(source, language).map((tokens, index) => ({ number: index + 1, tokens })), [source, language]);
+  const rows = useMemo(() => {
+    let from = 0;
+    return highlight(source, language).map((tokens, index) => { const row = { number: index + 1, tokens, from }; from += tokens.reduce((total, token) => total + token.value.length, 1); return row; });
+  }, [source, language]);
+  const [classesCollapsed, setClassesCollapsed] = useState(false);
+  const [classState, setClassState] = useState<{ source: string; overrides: Map<number, boolean> }>({ source, overrides: new Map() });
+  const classSpans = useMemo(() => classControls ? classRanges(source, language) : [], [source, language, classControls]);
+  const collapsedClasses = classSpans.filter((range) => (classState.source === source ? classState.overrides.get(range.from) : undefined) ?? classesCollapsed);
+  const toggleClasses = () => { setClassesCollapsed((value) => !value); setClassState({ source, overrides: new Map() }); };
+  const expandClasses = (from: number) => setClassState((state) => ({ source, overrides: new Map(state.source === source ? state.overrides : []).set(from, false) }));
+  const toggleAttribute = (from: number) => setClassState((state) => ({ source, overrides: toggleClassOverrides(classSpans, classesCollapsed, state.source === source ? state.overrides : new Map(), from) }));
   const folds = useMemo(() => codeFolds(source, language), [source, language]);
   const [foldState, setFoldState] = useState<{ source: string; collapsed: Set<number> }>({ source, collapsed: new Set() });
   const collapsed = foldState.source === source ? foldState.collapsed : new Set<number>();
@@ -69,10 +81,13 @@ setup
     if (scrollTo !== null) scrollToLine(containerRef.current, scrollTo.line);
   }, [scrollTo, rows, foldState]);
 if onSourceChange !== undefined
-  CodeEditor(source={source} language={language} firstLineNumber={firstLineNumber} label={label} vim={vim} disabled={disabled} documentKey={documentKey} onChange={onSourceChange} onBlur={onBlur} onSave={onSave})
+  CodeEditor(source={source} language={language} firstLineNumber={firstLineNumber} label={label} vim={vim} disabled={disabled} documentKey={documentKey} onChange={onSourceChange} onBlur={onBlur} onSave={onSave} onLineClick={onLineClick} selectedLine={activeLine} classesCollapsed={classesCollapsed} showClassControls={classControls} onToggleClasses={toggleClasses})
 else
   MessageScrollerProvider(autoScroll={false} defaultScrollPosition="start")
     MessageScroller(className="bdt-code-scroller" onMouseLeave={() => onLeave?.()})
+      if classControls && classSpans.length > 0
+        .bdt-code-controls
+          button.bdt-button(type="button" aria-pressed={classesCollapsed} onClick={toggleClasses}) #{classesCollapsed ? 'Expand classes' : 'Collapse classes'}
       MessageScrollerViewport(className="bdt-code" ref={containerRef} aria-label={label} style={language === 'tsrx' ? { tabSize: 2 } : undefined} preserveScrollOnPrepend={false})
         MessageScrollerContent(className="bdt-code-inner" role="presentation" aria-live="off")
           each row, ri in visibleRows key row.number
@@ -98,8 +113,13 @@ else
                         span(className={cx('bdt-depth-bar', depthTone(depths[row.number - 1]!, depthLimit))} style={{ width: `${4 + depths[row.number - 1]! * 5}px` }})
                         span.bdt-depth-num #{depths[row.number - 1]}
                 span.bdt-src
-                  each token, index in row.tokens key index
-                    span(className={`tk-${token.type}`}) #{token.value}
+                  each token, index in classDisplayTokens(row.tokens, row.from, collapsedClasses, classSpans) key index
+                    if token.classFold !== undefined
+                      button.bdt-class-fold(type="button" aria-label={`Expand Tailwind classes at line ${row.number}`} aria-expanded={false} title={token.classFold.text} onClick={(event) => { event.stopPropagation(); expandClasses(token.classFold!.from); }}) …
+                    elseif token.classKeyword !== undefined
+                      span(className={`tk-${token.type} bdt-class-keyword`} title="Double-click to expand or collapse classes" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); toggleAttribute(token.classKeyword!); }}) #{token.value}
+                    else
+                      span(className={`tk-${token.type}`}) #{token.value}
                   if collapsed.has(row.number)
                     span.bdt-dim #{` … ${folds.get(row.number)! - row.number} lines`}
       MessageScrollerButton(direction="start" className="bdt-code-scroll-button")

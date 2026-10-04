@@ -27,6 +27,10 @@ function lastLine(node: BeastNode): number {
   return Math.max(node.span.end.line, ...extra, ...children(node).map(lastLine))
 }
 
+function templateLine(nodes: readonly BeastNode[]): number | undefined {
+  return nodes.find((node) => node.kind !== 'text' && node.kind !== 'style' && !(node.kind === 'element' && node.isComponent))?.span.start.line
+}
+
 /** Source ranges come from Beast's AST; generated names come from Octane's source map. */
 export function sourceBlocks(document: BeastDocument, source: string, hostName: string, sourcePath: string,
   compiled: { code: string; map: BeastSourceMap } | null, beast: { code: string; map: BeastSourceMap },
@@ -58,12 +62,12 @@ export function sourceBlocks(document: BeastDocument, source: string, hostName: 
   }
   const topProps = document.declarations.find((entry) => entry.kind === 'props')
   const topSetup = document.declarations.flatMap((entry) => entry.kind === 'setup' ? [entry.code] : [])
-  infos.push({ block: { host: hostName, scope: hostName, kind: 'component', startLine: 1, endLine: lines.length, indent: '' }, scopes: [], parameter: '', setup: [] })
+  infos.push({ block: { host: hostName, scope: hostName, kind: 'component', startLine: 1, endLine: lines.length, indent: '', templateLine: templateLine(document.children) }, scopes: [], parameter: '', setup: [] })
   walk(document.children, hostName, topProps?.kind === 'props' ? topProps.parameter : '', topSetup, [])
   for (const declaration of document.declarations) {
     if (declaration.kind !== 'component') continue
     infos.push({ block: { host: declaration.name, scope: declaration.name, kind: 'component', startLine: declaration.span.start.line,
-      endLine: Math.max(declaration.span.end.line, ...declaration.children.map(lastLine), ...declaration.setup.map((entry) => entry.span.end.line)), indent: '' }, scopes: [], parameter: '', setup: [] })
+      endLine: Math.max(declaration.span.end.line, ...declaration.children.map(lastLine), ...declaration.setup.map((entry) => entry.span.end.line)), indent: '', templateLine: templateLine(declaration.children) }, scopes: [], parameter: '', setup: [] })
     walk(declaration.children, declaration.name, declaration.props?.parameter ?? '', declaration.setup.map((entry) => entry.code), [])
   }
   if (compiled !== null) {

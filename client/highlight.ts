@@ -139,7 +139,7 @@ const CODE_RULES: Array<[RegExp, TokenType | Classifier]> = [
   [/^@(?:if|else|for|switch|case|default|try|pending|catch|empty)\b/, 'directive'],
   [/^<\/?[A-Za-z][\w.:-]*/, (match, markup) => (!markup ? null : /^<\/?[A-Z]/.test(match) ? 'component' : 'tag')],
   [/^\/?>/, (_match, markup) => (markup ? 'tag' : 'punct')],
-  [/^[A-Za-z_$][\w$-]*(?==(?!=))/, (match, markup) => (markup || match.includes('-') ? 'attr' : 'text')],
+  [/^[A-Za-z_$][\w$-]*(?=\s*=(?!=))/, (match, markup) => (markup || match.includes('-') ? 'attr' : 'text')],
   [/^[A-Za-z_$][\w$]*/, (match, _markup, keywords) =>
     JS_KEYWORDS.has(match) || keywords?.has(match) === true ? 'keyword' : /^[A-Z]/.test(match) ? 'type' : 'text'],
   [/^\s+/, 'text'],

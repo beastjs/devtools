@@ -1,0 +1,66 @@
+import { useEffect, useRef, useState } from 'octane'
+import type { AnalyzerSettings, ApplyResult, RefactorSuggestion, SourceBlockReport } from '../shared/types.ts'
+import { applyRefactor, fetchSelection } from './api.ts'
+import { mappingTitle, miniSuggestions, nameIssue } from './refactor-actions.ts'
+
+props { report, line, settings, disabled, canApply, onBusyChange, onApplied }: { report: SourceBlockReport; line: number; settings: AnalyzerSettings; disabled: boolean; canApply?: (hash: string) => boolean; onBusyChange: (busy: boolean) => void; onApplied: (result: ApplyResult) => void | Promise<void> }
+setup
+  const [name, setName] = useState('');
+  const [suggestions, setSuggestions] = useState<RefactorSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
+  const applyingRef = useRef(false);
+  const inputName = useRef(name);
+  inputName.current = name;
+  useEffect(() => {
+    const request = ++requestId.current;
+    setSuggestions([]);
+    setName('');
+    setError(null);
+    if (disabled) { setLoading(false); return; }
+    setLoading(true);
+    void fetchSelection(report.path, line, settings).then((selection) => {
+      if (request !== requestId.current) return;
+      if (selection.hash !== report.hash) throw new Error('Source changed. Reload before refactoring.');
+      const candidates = (selection.analysis?.suggestions ?? []).filter((suggestion) => suggestion.host === report.block.host);
+      const { extract, mapping } = miniSuggestions(candidates, line);
+      setSuggestions(candidates);
+      setName(extract?.name ?? mapping?.name ?? '');
+    }).catch((error) => { if (request === requestId.current) setError(error instanceof Error ? error.message : String(error)); })
+      .finally(() => { if (request === requestId.current) setLoading(false); });
+    return () => { requestId.current += 1; };
+  }, [report.path, report.hash, line, settings, disabled]);
+  const { extract, mapping } = miniSuggestions(suggestions, line);
+  const componentIssue = extract === null ? 'Choose the first line of a template block' : extract.autoApply.blocked ?? nameIssue(extract, name);
+  const mapIssue = mapping === null ? null : nameIssue(mapping, mappingTitle(name));
+  const busy = disabled || loading || applying;
+  const apply = async (action: 'hoist' | 'create' | 'map') => {
+    const suggestion = action === 'map' ? mapping : extract;
+    const title = action === 'map' ? mappingTitle(inputName.current) : inputName.current.trim();
+    if (busy || applyingRef.current || canApply?.(report.hash) === false || suggestion === null || suggestion.autoApply.blocked !== null || nameIssue(suggestion, title) !== null || action === 'create' && suggestion.autoApply.fileBlocked !== null) return;
+    applyingRef.current = true;
+    setApplying(true);
+    setError(null);
+    onBusyChange(true);
+    try {
+      const result = await applyRefactor({ path: report.path, hash: report.hash, settings, suggestionId: suggestion.id, target: action === 'create' ? 'file' : 'inline', name: title, dryRun: false });
+      await onApplied(result);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      applyingRef.current = false;
+      setApplying(false);
+      onBusyChange(false);
+    }
+  };
+
+div.bdt-mini-refactor(role="group" aria-label="Refactor selected block" aria-busy={loading || applying})
+  input.bdt-input(type="text" aria-label="Refactor title" placeholder={loading ? 'Finding refactors…' : 'Component title'} value={name} disabled={disabled || applying} spellcheck="false" autocomplete="off" onInput={(event) => { inputName.current = event.currentTarget.value; setName(event.currentTarget.value); }})
+  button.bdt-button(type="button" disabled={busy || componentIssue !== null} title={componentIssue ?? `Hoist ${name.trim()} into this file`} onClick={() => apply('hoist')}) Hoist
+  button.bdt-button(type="button" disabled={busy || componentIssue !== null || extract?.autoApply.fileBlocked !== null} title={componentIssue ?? extract?.autoApply.fileBlocked ?? `Create ${name.trim()}.btsx`} onClick={() => apply('create')}) Create
+  if mapping !== null
+    button.bdt-button(type="button" disabled={busy || mapIssue !== null} title={mapIssue ?? `Map ${mapping.mapping!.items.length} siblings at lines ${mapping.startLine}–${mapping.endLine} as ${mappingTitle(name)}`} onClick={() => apply('map')}) Map
+if error !== null
+  p.bdt-editor-error(role="alert") #{error}

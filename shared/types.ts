@@ -198,6 +198,8 @@ export interface SourceBlock extends LineRange {
   itemName?: string
   itemType?: string
   iterable?: string
+  /** First template root for component blocks, used by the compact refactor controls. */
+  templateLine?: number
 }
 
 export interface SourceBlockSelection {

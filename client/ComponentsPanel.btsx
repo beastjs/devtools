@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'octane'
-import type { ComponentLocation, SourceBlockSelection } from '../shared/types.ts'
+import type { AnalyzerSettings, ComponentLocation, SourceBlockSelection } from '../shared/types.ts'
 import { openInEditor } from './api.ts'
 import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell } from './runtime.ts'
 import Splitter from './Splitter.btsx'
 import SourceBlockEditor from './SourceBlockEditor.btsx'
 import { findWrappers, treeRows, sourceSelections, type TreeRow, type ComponentsView } from './tree.ts'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
+import {Icon} from "../packages/icons/src";
+import { useToggle } from '../hooks/use-toggle.ts'
+
 
 module
   interface ComponentsPanelProps {
@@ -18,6 +21,7 @@ module
     onShowControlFlowChange: (value: boolean) => void
     onViewSource: (path: string, line: number) => void
     onAnalyze: (path: string) => void
+    settings: AnalyzerSettings
   }
 
   interface ValueRow {
@@ -78,7 +82,7 @@ module
     })
   }
 
-props { components, entryComponents, view, onViewChange, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze }: ComponentsPanelProps
+props { components, entryComponents, view, onViewChange, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze, settings }: ComponentsPanelProps
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [query, setQuery] = useState('');
@@ -128,6 +132,12 @@ setup
     return next;
   });
 
+  const [isSearchExpanded, toggleSearch] = useToggle();
+  const handleToggleSearch = (e: MouseEvent | FocusEvent) => {
+    e.preventDefault();
+    void toggleSearch();
+  };
+
 if runtime.status === 'unavailable'
   .bdt-empty
     .bdt-empty-card
@@ -151,18 +161,24 @@ else
               ~ onClick={() => onViewChange(option.id)}
               ~ )
               | #{option.label}
-        input.bdt-input(
-          ~ type="search"
-          ~ placeholder="Filter components"
-          ~ aria-label="Filter components"
-          ~ value={query}
-          ~ onInput={(event) => setQuery(event.currentTarget.value)}
-          ~ )
-        label.bdt-check
-          input(type="checkbox" checked={showControlFlow} onChange={(event) => onShowControlFlowChange(event.currentTarget.checked)})
-          | Control flow
+
+        if isSearchExpanded
+          input.bdt-input(
+            ~ type="search"
+            ~ placeholder="Filter components"
+            ~ aria-label="Filter components"
+            ~ onBlur={handleToggleSearch}
+            ~ value={query}
+            ~ onInput={(event) => setQuery(event.currentTarget.value)}
+            ~ className={' w-full!'}
+            ~ )
+        else
+          div(className='flex justify-between items-center w-full! border gap-12')
+            label.bdt-check  Control flow
+              input(type="checkbox" checked={showControlFlow} onChange={(event) => onShowControlFlowChange(event.currentTarget.checked)})
+            button(onClick={handleToggleSearch})
+              Icon(name="search" size={12} className='text-[var(--bdt-dim-2)] place-self-end')
         .bdt-spacer
-        span.bdt-dim #{runtime.componentCount} component#{runtime.componentCount === 1 ? '' : 's'}
       .bdt-scroll
         if rows.length === 0
           p.bdt-empty #{query === '' ? 'No Octane roots are mounted.' : 'Nothing matches that filter.'}
@@ -246,7 +262,7 @@ else
                 button.bdt-button(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
                 button.bdt-button(type="button" onClick={() => onAnalyze(location.path)}) Analyze file
                 button.bdt-button(type="button" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) Open in editor
-      SourceBlockEditor(selection={selectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
+      SourceBlockEditor(selection={selectedSource} settings={settings} onSelectionChange={setSelectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
       if detail !== null
         details.bdt-runtime-details
           summary State, context & effects

@@ -7,6 +7,7 @@ import PathLabel from './PathLabel.btsx'
 import Splitter from './Splitter.btsx'
 import CallChip from '../components/call-chip.btsx'
 import { cx, scrollTarget, type RecentRefactor, type ScrollTarget } from './util.ts'
+import { nameIssue } from './refactor-actions.ts'
 
 module
   interface RefactorPanelProps {
@@ -30,15 +31,6 @@ module
     result: ApplyResult | null
     error: string | null
     name: string
-  }
-
-  /** Why a chosen name would be refused, or null when it is usable. */
-  function nameIssue(suggestion: RefactorSuggestion, name: string): string | null {
-    if (suggestion.kind === 'continuation' || suggestion.kind === 'empty-style') return null
-    const component = suggestion.mapping === null
-    if (name.trim() === '') return 'Enter a name'
-    const pattern = component ? /^[A-Z][A-Za-z0-9_$]*$/ : /^[a-z_$][A-Za-z0-9_$]*$/
-    return pattern.test(name.trim()) ? null : component ? 'Use PascalCase, like UserCard' : 'Use a camelCase name, like items'
   }
 
   function targetLabel(target: RefactorTarget, suggestion: RefactorSuggestion): string {
@@ -434,6 +426,7 @@ setup
         if selectionError !== null
           p.bdt-project-message(role="status") #{selectionError}
         CodeView(
+          ~ classControls={true}
           ~ source={current.source}
           ~ language="btsx"
           ~ label="BTSX source with nesting depth"

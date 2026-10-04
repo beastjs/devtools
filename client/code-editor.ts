@@ -7,6 +7,7 @@ import { search, searchKeymap } from '@codemirror/search'
 import { Vim, vim } from '@replit/codemirror-vim'
 import { highlight, type Language } from './highlight.ts'
 import { codeFolds } from './code-folds.ts'
+import { collapseClasses, editorClassFolding } from './editor-class-folds.ts'
 
 export interface CodeEditorOptions {
   source: string
@@ -18,6 +19,9 @@ export interface CodeEditorOptions {
   onChange: (source: string) => void
   onBlur?: () => void
   onSave?: (source: string) => void
+  onLineClick?: (line: number) => void
+  selectedLine?: number | null
+  classesCollapsed?: boolean
 }
 
 const externalChange = Annotation.define<boolean>()
@@ -89,19 +93,33 @@ export function createCodeEditor(parent: HTMLElement, initial: CodeEditorOptions
   const vimMode = new Compartment()
   const accessibility = new Compartment()
   const numbers = new Compartment()
+  const selected = new Compartment()
+  const selectedLine = (): Extension => EditorView.decorations.of((view) => {
+    const line = (options.selectedLine ?? 0) - options.firstLineNumber + 1
+    return line < 1 || line > view.state.doc.lines ? Decoration.none : Decoration.set([Decoration.line({ class: 'bdt-refactor-line' }).range(view.state.doc.line(line).from)])
+  })
   const access = (): Extension => [
     EditorState.readOnly.of(options.disabled), EditorView.editable.of(!options.disabled),
     EditorView.contentAttributes.of({ 'aria-label': options.label, 'aria-readonly': String(options.disabled), spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off' }),
   ]
-  const numbering = () => lineNumbers({ formatNumber: (line) => String(line + options.firstLineNumber - 1) })
+  const numbering = () => lineNumbers({
+    formatNumber: (line) => String(line + options.firstLineNumber - 1),
+    domEventHandlers: { click: (_view, block, event) => {
+      if (options.onLineClick && !options.disabled) {
+        event.preventDefault(); options.onLineClick(view.state.doc.lineAt(block.from).number + options.firstLineNumber - 1); return true
+      }
+      return false
+    } },
+  })
   const view = new EditorView({
     parent,
     state: EditorState.create({
       doc: initial.source,
       extensions: [
         vimMode.of(options.vim ? vim({ status: true }) : []),
-        accessibility.of(access()), numbers.of(numbering()),
+        accessibility.of(access()), numbers.of(numbering()), selected.of(selectedLine()),
         codeEditorLanguage(options.language),
+        editorClassFolding(options.language, options.classesCollapsed),
         history(), drawSelection(), dropCursor(), highlightActiveLine(), highlightActiveLineGutter(),
         codeFolding({
           preparePlaceholder: (state, range) => state.doc.lineAt(range.to).number - state.doc.lineAt(range.from).number,
@@ -124,7 +142,10 @@ export function createCodeEditor(parent: HTMLElement, initial: CodeEditorOptions
           },
         }),
         search({ top: true }),
-        Prec.highest(keymap.of([{ key: 'Mod-s', run: () => { if (!options.disabled) options.onSave?.(view.state.doc.toString()); return true } }])),
+        Prec.highest(keymap.of([
+          { key: 'Mod-s', run: () => { if (!options.disabled) options.onSave?.(view.state.doc.toString()); return true } },
+          { key: 'Alt-Enter', run: () => { if (options.disabled || !options.onLineClick) return false; options.onLineClick(view.state.doc.lineAt(view.state.selection.main.head).number + options.firstLineNumber - 1); return true } },
+        ])),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, indentWithTab]),
         EditorView.domEventHandlers({
           blur: (event) => { if (!view.dom.contains(event.relatedTarget as Node | null)) options.onBlur?.() },
@@ -151,6 +172,8 @@ export function createCodeEditor(parent: HTMLElement, initial: CodeEditorOptions
       if (previous.vim !== next.vim) effects.push(vimMode.reconfigure(next.vim ? vim({ status: true }) : []))
       if (previous.disabled !== next.disabled || previous.label !== next.label) effects.push(accessibility.reconfigure(access()))
       if (previous.firstLineNumber !== next.firstLineNumber) effects.push(numbers.reconfigure(numbering()))
+      if (previous.selectedLine !== next.selectedLine || previous.firstLineNumber !== next.firstLineNumber) effects.push(selected.reconfigure(selectedLine()))
+      if (previous.classesCollapsed !== next.classesCollapsed) effects.push(collapseClasses.of(next.classesCollapsed ?? false))
       const current = view.state.doc.toString()
       const source = next.source.replace(/\r\n?/g, '\n')
       const replace = documentSync.receive(source)

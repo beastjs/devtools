@@ -33,6 +33,7 @@ test('pins pasted margins and preserves internal nesting, including tabs and bla
 test('maps authored scopes and derives the each item type', () => {
   const { project } = fixture()
   const location = project.report(DEFAULT_SETTINGS).components.find((component) => component.name === 'App')!
+  expect(location.blocks!.find((block) => block.kind === 'component')?.templateLine).toBe(4)
   const loop = location.blocks!.find((block) => block.scope?.startsWith('__item$'))!
   expect(loop).toMatchObject({ host: 'App', kind: 'each', startLine: 5, endLine: 6, indent: '  ', itemName: 'item', itemType: 'Item', iterable: 'items' })
   expect(project.sourceBlock({ path: 'src/App.btsx', host: 'App', line: 5, kind: 'each' }).code).toBe('  each item in items key item.id\n    p #{item.name}')
@@ -70,6 +71,7 @@ test('selects complete local components and keeps adjacent declarations intact',
   const source = 'component Card\n  props {name}: {name: string}\n  div\n    span #{name}\n\ncomponent Other\n  p Other\n\nCard(name="Hello")\n'
   const { project, app } = fixture(source)
   const report = project.sourceBlock({ path: 'src/App.btsx', host: 'Card', line: 1, kind: 'component' })
+  expect(report.block.templateLine).toBe(3)
   expect(report.code).toBe('component Card\n  props {name}: {name: string}\n  div\n    span #{name}')
   project.editBlock({ path: report.path, host: 'Card', line: 1, kind: 'component', hash: report.hash, code: report.code.replace('span', 'strong') })
   expect(readFileSync(app.appPath, 'utf8')).toContain('\n\ncomponent Other\n  p Other\n\nCard(name="Hello")\n')
