@@ -540,3 +540,6 @@ elements with **5 or more inline props**. Adjust **Continue at props** to change
 that minimum; it is saved with your browser preferences. Select **Continue props
 with ~** on a suggestion to review its diff, then **Apply changes** to save it.
 Already continued headers are excluded from automatic suggestions.
+
+
+--automode
