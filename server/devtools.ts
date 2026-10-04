@@ -207,7 +207,8 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
       return send(404, { error: `Unknown endpoint ${url.pathname}` })
     } catch (error) {
       if (error instanceof RefactorError) return send(error.status, { error: error.message })
-      return send(500, { error: error instanceof Error ? error.message : String(error) })
+      console.error('[beast-devtools] Request failed:', error)
+      return send(500, { error: 'The devtools request failed. Check the server console for details.' })
     }
   }
 

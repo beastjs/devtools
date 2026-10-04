@@ -1000,7 +1000,7 @@ export function renameSuggestion<T extends Draft>(suggestion: T, name: string): 
     if (mapping.placement === 'module') {
       mapping.arrayName = name
     } else {
-      const pattern = new RegExp(`\\b${mapping.itemName.replace(/\$/g, '\\$')}\\.`, 'g')
+      const pattern = new RegExp(`\\b${mapping.itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`, 'g')
       body = body.replace(pattern, `${name}.`)
       mapping.key = mapping.key.replace(pattern, `${name}.`)
       mapping.itemName = name

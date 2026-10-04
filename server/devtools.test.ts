@@ -11,11 +11,11 @@ import { createDevtoolsServer } from './devtools.ts'
 const cleanups: (() => void)[] = []
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup() })
 
-async function fixture() {
+async function fixture(editorUrl = (file: string) => `/editor?file=${encodeURIComponent(file)}`) {
   const running = createApp()
   const other = createApp()
   cleanups.push(running.cleanup, other.cleanup)
-  const devtools = createDevtoolsServer({ root: running.root, editorUrl: (file) => `/editor?file=${encodeURIComponent(file)}` })
+  const devtools = createDevtoolsServer({ root: running.root, editorUrl })
   const server = createServer((req, res) => devtools.middleware(req, res, () => { res.statusCode = 404; res.end() }))
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   cleanups.push(() => { devtools.close(); server.closeAllConnections(); server.close() })
@@ -26,6 +26,20 @@ async function fixture() {
   })
   return { running, other, devtools, get, post }
 }
+
+test('unexpected exceptions are logged locally without exposing details over HTTP', async () => {
+  const error = new Error('Secret project path and stack details')
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const { get } = await fixture(() => { throw error })
+    const response = await get('/open-in-editor?file=src/App.btsx')
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({ error: 'The devtools request failed. Check the server console for details.' })
+    expect(logged).toHaveBeenCalledWith('[beast-devtools] Request failed:', error)
+  } finally {
+    logged.mockRestore()
+  }
+})
 
 test.each(['running', 'opened'])('%s project watcher ignores missing filenames and still emits source changes', async (project) => {
   const watched = spyOn(fs, 'watch')
