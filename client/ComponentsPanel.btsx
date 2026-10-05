@@ -7,7 +7,7 @@ import SourceBlockEditor from './SourceBlockEditor.btsx'
 import { findWrappers, treeRows, sourceSelections, type TreeRow, type ComponentsView } from './tree.ts'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
 import {Icon} from "../packages/icons/src";
-import { useToggle } from '../hooks/use-toggle.ts'
+import { useToggle } from '../src/hooks/use-toggle.ts'
 
 
 module
