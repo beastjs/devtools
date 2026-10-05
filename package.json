@@ -55,6 +55,7 @@
     "dist",
     "client",
     "components",
+    "hooks",
     "src/components/ui/message-scroller.btsx",
     "packages/icons/src",
     "shared",

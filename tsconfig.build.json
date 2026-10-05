@@ -13,6 +13,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["vite.ts", "rspack.ts", "rsbuild.ts", "server/**/*.ts", "shared/**/*.ts"],
+  "include": ["vite.ts", "rspack.ts", "rsbuild.ts", "server/**/*.ts", "shared/**/*.ts", "hooks/**/*.ts"],
   "exclude": ["**/*.test.ts"]
 }
