@@ -2,6 +2,7 @@ import { createRoot } from 'octane'
 import BeastDevtools from './BeastDevtools.btsx'
 import { applyLayout } from './layout.ts'
 import './devtools.css'
+import './vt.css'
 
 const HOST_ID = 'beast-devtools'
 

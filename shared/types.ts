@@ -225,6 +225,18 @@ export interface BlockEditResult extends SourceBlockReport {
   undoId: string
 }
 
+export interface TailwindOptimizeRequest {
+  path: string
+  host: string
+  hash: string
+}
+
+export interface TailwindOptimizeResult {
+  hash: string
+  undoId: string | null
+  changed: boolean
+}
+
 export interface ProjectReport {
   root: string
   settings: AnalyzerSettings
@@ -299,6 +311,30 @@ export interface UndoResult {
 
 export type ElementStyleTarget = 'inline' | 'css' | 'tailwind'
 
+export interface ElementTextContext {
+  /** Text before the live DOM edit, and the instance among identical source tags. */
+  value: string
+  index: number
+  count: number
+}
+
+export interface ElementTextSource {
+  kind: 'direct' | 'array' | 'imported' | 'unsupported'
+  label?: string
+  path?: string
+  line?: number
+  column?: number
+  message?: string
+}
+
+export interface ElementTextRequest {
+  path: string
+  line: number
+  column: number
+  tag: string
+  textContext: ElementTextContext
+}
+
 /** A source-backed edit made by the Elements panel or layout handles. */
 export interface ElementEditRequest {
   path: string
@@ -314,6 +350,7 @@ export interface ElementEditRequest {
   styleTarget?: ElementStyleTarget
   cssPath?: string
   cssSelector?: string
+  textContext?: ElementTextContext
 }
 export interface ElementEditResult {
   hash: string

@@ -1,0 +1,57 @@
+:root {
+  --vt-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+/* 1 · roll — counter digits */
+::view-transition-group(*.roll-up),
+::view-transition-group(*.roll-down) {
+  overflow: hidden;
+  animation-duration: 380ms;
+}
+::view-transition-old(*.roll-up) {
+  animation: 380ms var(--vt-ease) both vt-out-up;
+}
+::view-transition-new(*.roll-up) {
+  animation: 380ms var(--vt-ease) both vt-in-up;
+}
+::view-transition-old(*.roll-down) {
+  animation: 380ms var(--vt-ease) both vt-out-down;
+}
+::view-transition-new(*.roll-down) {
+  animation: 380ms var(--vt-ease) both vt-in-down;
+}
+
+@keyframes vt-out-up {
+  to {
+    transform: translateY(-110%);
+    opacity: 0;
+  }
+}
+@keyframes vt-in-up {
+  from {
+    transform: translateY(110%);
+    opacity: 0;
+  }
+}
+@keyframes vt-out-down {
+  to {
+    transform: translateY(110%);
+    opacity: 0;
+  }
+}
+@keyframes vt-in-down {
+  from {
+    transform: translateY(-110%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*.roll-up),
+  ::view-transition-group(*.roll-down),
+  ::view-transition-old(*.roll-up),
+  ::view-transition-new(*.roll-up),
+  ::view-transition-old(*.roll-down),
+  ::view-transition-new(*.roll-down) {
+    animation-duration: 0s;
+  }
+}

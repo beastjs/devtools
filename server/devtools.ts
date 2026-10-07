@@ -122,6 +122,14 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         }
         const settings = readSettings((name) => url.searchParams.get(name), defaults)
         if (url.pathname === '/project') return send(200, selected.project.report(settings))
+        if (url.pathname === '/element-text-source') {
+          const line = Number(url.searchParams.get('line'))
+          const column = Number(url.searchParams.get('column'))
+          const index = Number(url.searchParams.get('index'))
+          const count = Number(url.searchParams.get('count'))
+          if (![line, column, index, count].every(Number.isSafeInteger) || line < 1 || column < 1 || index < 0 || count < 1 || index >= count) return send(422, { error: 'Choose a valid source element.' })
+          return send(200, selected.project.elementTextSource({ path: url.searchParams.get('path') ?? '', line, column, tag: url.searchParams.get('tag') ?? '', textContext: { value: url.searchParams.get('value') ?? '', index, count } }))
+        }
         if (url.pathname === '/source-block') {
           const line = Number(url.searchParams.get('line'))
           if (!Number.isSafeInteger(line) || line < 1) return send(422, { error: 'Choose a valid source block.' })
@@ -189,6 +197,18 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           line: Number(body.line), dryRun: body.dryRun !== false,
         }))
       }
+      if (url.pathname === '/tailwind-optimize') {
+        if (typeof body.path !== 'string' || typeof body.host !== 'string' || !body.host.trim() || typeof body.hash !== 'string') return send(422, { error: 'Choose a valid component to optimize.' })
+        const result = selected.project.optimizeTailwind({ path: body.path, host: body.host, hash: body.hash })
+        if (result.changed) {
+          if (selected.root === root) notify(resolve(root, body.path))
+          else {
+            pending.add(toPosix(relative(selected.root, resolve(selected.root, body.path))))
+            timer ??= setTimeout(flush, NOTIFY_DELAY_MS)
+          }
+        }
+        return send(200, result)
+      }
       if (url.pathname === '/block-edit') {
         if (typeof body.code !== 'string' || typeof body.host !== 'string' || typeof body.kind !== 'string' || !Number.isSafeInteger(body.line) || Number(body.line) < 1) return send(422, { error: 'Invalid code block edit.' })
         return send(200, selected.project.editBlock({ path: String(body.path ?? ''), hash: String(body.hash ?? ''), host: body.host, kind: body.kind, line: Number(body.line), code: body.code }))
@@ -201,6 +221,8 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           return send(422, { error: 'Invalid element edit.' })
         }
         if (body.styleTarget !== undefined && !['inline', 'css', 'tailwind'].includes(String(body.styleTarget))) return send(422, { error: 'Invalid style target.' })
+        const textContext = body.textContext as import('../shared/types.js').ElementTextContext | undefined
+        if (textContext !== undefined && (!textContext || typeof textContext.value !== 'string' || !Number.isSafeInteger(textContext.index) || !Number.isSafeInteger(textContext.count) || textContext.index < 0 || textContext.count < 1 || textContext.index >= textContext.count)) return send(422, { error: 'Invalid mapped text context.' })
         return send(200, selected.project.editElement({
           path: String(body.path ?? ''), hash: String(body.hash ?? ''), line: Number(body.line), column: Number(body.column),
           tag: String(body.tag ?? ''), group: body.group as 'styles' | 'attributes' | 'properties',
@@ -210,6 +232,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
           styleTarget: body.styleTarget as import('../shared/types.js').ElementStyleTarget | undefined,
           cssPath: typeof body.cssPath === 'string' ? body.cssPath : undefined,
           cssSelector: typeof body.cssSelector === 'string' ? body.cssSelector : undefined,
+          textContext,
         }))
       }
       if (url.pathname === '/undo') return send(200, selected.project.undo(String(body.id ?? '')))

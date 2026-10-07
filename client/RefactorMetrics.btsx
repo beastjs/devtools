@@ -1,0 +1,68 @@
+import { startTransition, useEffect, useState, ViewTransition } from 'octane'
+import type { FileAnalysis } from '../shared/types.ts'
+import { cx } from './util.ts'
+
+module
+  interface RefactorMetricsProps {
+    analysis: FileAnalysis | null
+    loading: boolean
+    projectId: string
+    depthLimit: number
+  }
+
+  function roll(value: number | undefined, previous: number | undefined): string {
+    if (value === undefined || previous === undefined || value === previous) return 'none'
+    return value > previous ? 'roll-up' : 'roll-down'
+  }
+
+props { analysis, loading, projectId, depthLimit }: RefactorMetricsProps
+setup
+  const [snapshot, setSnapshot] = useState({ analysis, previous: analysis, projectId });
+  useEffect(() => {
+    // Keep the last completed analysis on screen while the next file loads.
+    if (analysis === null && loading && projectId === snapshot.projectId) return;
+    if (analysis === snapshot.analysis && projectId === snapshot.projectId) return;
+    // Let the file/report effects finish their urgent updates before capturing.
+    const timer = setTimeout(() => {
+      const update = () => setSnapshot((previous) => ({
+        analysis,
+        previous: previous.projectId === projectId ? previous.analysis : null,
+        projectId,
+      }));
+      if (analysis !== null && snapshot.analysis !== null && snapshot.projectId === projectId) startTransition(update);
+      else update();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [analysis, loading, projectId]);
+  const displayed = snapshot.projectId === projectId ? snapshot.analysis : null;
+  const previous = snapshot.projectId === projectId ? snapshot.previous : null;
+  const histogram = displayed?.histogram ?? [];
+  const histogramMax = Math.max(1, ...histogram);
+  const tone = (depth: number) => depth > depthLimit ? 'is-over' : depth === depthLimit ? 'is-near' : '';
+
+.bdt-metrics(role="group" aria-label="File metrics" aria-busy={loading})
+  .bdt-metric(className={displayed !== null && displayed.maxDepth > depthLimit && 'metric-alert'})
+    ViewTransition(name="bdt-metric-max-depth" update={roll(displayed?.maxDepth, previous?.maxDepth)} default="none")
+      span(className={cx('bdt-metric-value', displayed !== null && displayed.maxDepth > depthLimit && 'is-over')}) #{displayed?.maxDepth ?? '—'}
+    span.bdt-metric-label Max depth
+  .bdt-metric
+    ViewTransition(name="bdt-metric-average-depth" update={roll(displayed?.averageDepth, previous?.averageDepth)} default="none")
+      span.bdt-metric-value #{displayed?.averageDepth ?? '—'}
+    span.bdt-metric-label Avg depth
+  .bdt-metric(className={displayed !== null && displayed.deepLines > 0 && 'metric-alert'})
+    ViewTransition(name="bdt-metric-deep-lines" update={roll(displayed?.deepLines, previous?.deepLines)} default="none")
+      span(className={cx('bdt-metric-value', displayed !== null && displayed.deepLines > 0 && 'is-over')}) #{displayed?.deepLines ?? '—'}
+    span.bdt-metric-label Lines over #{depthLimit}
+  .bdt-metric
+    ViewTransition(name="bdt-metric-template-lines" update={roll(displayed?.templateLines, previous?.templateLines)} default="none")
+      span.bdt-metric-value #{displayed?.templateLines ?? '—'}
+    span.bdt-metric-label Template lines
+  .bdt-metric
+    ViewTransition(name="bdt-metric-indent-unit" update={roll(displayed?.indentUnit, previous?.indentUnit)} default="none")
+      span.bdt-metric-value #{displayed?.indentUnit ?? '—'}
+    span.bdt-metric-label Indent spaces
+  div.bdt-histogram(role="img" aria-label={displayed === null ? 'Template lines per depth unavailable' : `Template lines per depth: ${histogram.map((count, depth) => `depth ${depth}: ${count}`).join(', ')}`})
+    each count, depth in histogram key depth
+      .bdt-histogram-col(title={`Depth ${depth}: ${count} line${count === 1 ? '' : 's'}`})
+        span(className={cx('bdt-histogram-bar', tone(depth))} style={{ height: `${Math.max(2, Math.round((count / histogramMax) * 24))}px` }})
+        span.bdt-histogram-label #{depth}

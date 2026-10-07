@@ -15,6 +15,8 @@ import type {
   AnalyzerSettings,
   ElementEditRequest,
   ElementEditResult,
+  ElementTextRequest,
+  ElementTextSource,
   ApplyRequest,
   ContinuationRequest,
   ApplyResult,
@@ -31,12 +33,16 @@ import type {
   SourceBlockReport,
   BlockEditRequest,
   BlockEditResult,
+  TailwindOptimizeRequest,
+  TailwindOptimizeResult,
 } from '../shared/types.js'
 import { pinBlockIndent } from '../shared/block-indent.js'
 import { sourceBlocks } from './source-blocks.js'
 import { tagSource } from './source-tags.js'
 import { replaceCssRule } from './style-edits.js'
 import { editElement } from './element-edits.js'
+import { elementTextSource } from './element-text.js'
+import { optimizeTailwind } from './tailwind-optimize.js'
 import { continuationEdits, continueProps } from './continuation.js'
 import { entryComponents } from './entry.js'
 import { analyzeDocument, renameSuggestion, type AnalyzeOptions } from './analyze.js'
@@ -250,6 +256,14 @@ export class BeastProject {
     return { undoId, component: '', summary, files }
   }
 
+  elementTextSource(request: ElementTextRequest): ElementTextSource {
+    const absolutePath = this.resolve(request.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    const entry = this.#compile(absolutePath)
+    if (entry.result === null) throw new RefactorError('The source file does not compile.', 422)
+    return elementTextSource(entry.result.ast, entry.source, request, absolutePath, this.#options.root)
+  }
+
   editElement(request: ElementEditRequest): ElementEditResult {
     const absolutePath = this.resolve(request.path)
     if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
@@ -274,6 +288,26 @@ export class BeastProject {
     this.#applied.set(undoId, { summary: 'Element edit', changes })
     if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
     return { hash: contentHash(after), undoId }
+  }
+
+  optimizeTailwind(request: TailwindOptimizeRequest): TailwindOptimizeResult {
+    const absolutePath = this.resolve(request.path)
+    if (absolutePath === null) throw new RefactorError('Unknown .btsx file.', 422)
+    this.invalidate(absolutePath)
+    const entry = this.#compile(absolutePath)
+    if (contentHash(entry.source) !== request.hash) throw new RefactorError('The source file changed. Reload before optimizing.', 409)
+    if (entry.result === null) throw new RefactorError('The source file does not compile.', 422)
+    const defaultHost = componentNameFromPath(absolutePath)
+    if (request.host !== defaultHost && !entry.result.ast.declarations.some((d) => d.kind === 'component' && d.name === request.host)) throw new RefactorError('That component is no longer available. Select it again.', 409)
+    const after = optimizeTailwind(entry.result.ast, entry.source, request.host, defaultHost)
+    if (after === entry.source) return { hash: request.hash, undoId: null, changed: false }
+    const change = { absolutePath, before: entry.source, after }
+    this.#validate(change)
+    this.#write([change])
+    const undoId = randomUUID()
+    this.#applied.set(undoId, { summary: `Tailwind optimization in ${request.host}`, changes: [change] })
+    if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
+    return { hash: contentHash(after), undoId, changed: true }
   }
 
   sourceBlock(selection: SourceBlockSelection): SourceBlockReport {

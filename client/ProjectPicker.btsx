@@ -81,7 +81,7 @@ setup
 
 div.bdt-project-picker(ref={container})
   button.bdt-icon-button(ref={trigger} type="button" disabled={working} aria-label="Open project" title={root ? `Open project · ${root}` : 'Open project'} aria-expanded={editing} aria-controls="bdt-project-popover" onClick={() => { setEditing(!editing); setError(null); }})
-    Icon(name="folder" size={28} className="size-5 text-[#419cff]")
+    Icon(name="folder" size={28} className="size-5 text-[var(--mac-blue)]")
   if external
     button.bdt-button(type="button" disabled={working} onClick={() => { close(); onSelect(''); }}) Back to running app
   if editing

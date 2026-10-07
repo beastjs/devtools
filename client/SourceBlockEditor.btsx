@@ -22,7 +22,7 @@ module
   const identity = (selection: SourceBlockSelection | null) => selection === null ? '' : `${selection.path}:${selection.host}:${selection.line}:${selection.kind}`
   const message = (error: unknown) => error instanceof Error ? error.message : String(error)
 
-props { selection, settings = DEFAULT_SETTINGS, onSelectionChange, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; settings?: AnalyzerSettings; onSelectionChange?: (selection: SourceBlockSelection) => void; selectionMessage?: string }
+props { selection, settings = DEFAULT_SETTINGS, sourceRevision = 0, onSelectionChange, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; settings?: AnalyzerSettings; sourceRevision?: number; onSelectionChange?: (selection: SourceBlockSelection) => void; selectionMessage?: string }
 setup
   const key = identity(selection);
   const active = useRef(key);
@@ -62,6 +62,15 @@ setup
     if (cached) setState(cached);
     else void load(key, selection);
   }, [key]);
+  const lastRevision = useRef(sourceRevision);
+  useEffect(() => {
+    if (lastRevision.current === sourceRevision) return;
+    lastRevision.current = sourceRevision;
+    if (!selection) return;
+    const current = drafts.current.get(key);
+    if (current && (current.draft !== current.report?.code || current.saving || refactorBusy.current)) update(key, (previous) => ({ ...previous, stale: true }));
+    else void load(key, selection);
+  }, [sourceRevision]);
   useEffect(() => onSourceChanged((path) => {
     for (const [id, cached] of drafts.current) {
       if (cached.report?.path !== path) continue;
@@ -157,7 +166,7 @@ section.bdt-block-editor(aria-label="Selected source block" aria-busy={state.loa
         span.bdt-dim(title="The block returns to this outer indentation on blur and save; internal nesting is preserved.") Indent pinned: #{state.report.block.indent.replace(/\t/g, '  ').length}
         span.bdt-dim(role="status") #{dirty ? 'Unsaved' : state.undoId && !state.stale ? 'Saved' : ''}
         .bdt-spacer
-        button.bdt-button(type="button" aria-pressed={vim} onClick={toggleVim} title="Vim keybindings: i to insert, Escape for normal mode, :w to save") Vim #{vim ? 'on' : 'off'}
+        button.bdt-button(type="button" aria-pressed={vim} onClick={toggleVim} title="Vim keybindings: i to insert, Escape for normal mode, :w to save") Vim #{vim ? '' : ''}
         button.bdt-button(type="button" disabled={!dirty || state.saving || state.stale || refactoring} onClick={() => save()}) #{state.saving ? 'Saving…' : 'Save'}
         button.bdt-button(type="button" disabled={!state.undoId || state.saving || dirty || refactoring} onClick={undo}) Undo
         button.bdt-button(type="button" disabled={state.saving || refactoring} onClick={reload} title="Reload source and discard this draft") #{dirty ? 'Discard' : 'Reload'}

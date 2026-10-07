@@ -200,3 +200,73 @@ test('saving to CSS removes only the edited property from inline CSS strings', (
   expect(readFileSync(filename, 'utf8')).not.toContain('width')
   expect(readFileSync(cssPath, 'utf8')).toContain('width: 30px')
 })
+
+test('mapped object text edits change the selected array member and undo restores the source', () => {
+  const source = 'module\n  const items = [{ title: "One", id: 1 }, { title: "Two", id: 2 }];\neach item in items key item.id\n  p #{item.title}\n'
+  const { project, filename, request } = fixture(source)
+  const edit = { ...request, line: 4, column: 3, tag: 'p', group: 'properties' as const, name: 'textContent', value: 'Updated "two" #{literal}', textContext: { value: 'Two', index: 1, count: 2 } }
+  expect(project.elementTextSource(edit)).toMatchObject({ kind: 'array', label: 'items', path: filename, line: 2 })
+  const result = project.editElement(edit)
+  const after = readFileSync(filename, 'utf8')
+  expect(after).toContain('title: "One", id: 1')
+  expect(after).toContain('title: "Updated \\"two\\" #{literal}", id: 2')
+  expect(after).toContain('p #{item.title}')
+  expect(() => project.editElement(edit)).toThrow('changed')
+  project.undo(result.undoId)
+  expect(readFileSync(filename, 'utf8')).toBe(source)
+})
+
+test('mapped primitive arrays preserve instance identity for duplicate text and repeated edits', () => {
+  const source = 'setup\n  const items = ["Same", "Same", "Last"];\neach item in items key item\n  p #{item}\n'
+  const { project, filename, request } = fixture(source)
+  const edit = { ...request, line: 4, column: 3, tag: 'p', group: 'properties' as const, name: 'innerText', value: 'Second', textContext: { value: 'Same', index: 1, count: 3 } }
+  const first = project.editElement(edit)
+  expect(readFileSync(filename, 'utf8')).toContain('["Same", "Second", "Last"]')
+  project.editElement({ ...edit, hash: first.hash, value: 'Again', textContext: { ...edit.textContext, value: 'Second' } })
+  expect(readFileSync(filename, 'utf8')).toContain('["Same", "Again", "Last"]')
+  expect(readFileSync(filename, 'utf8')).toContain('p #{item}')
+})
+
+test('nested arrays, local components and aliases keep their mapping and source line positions', () => {
+  const source = 'component List\n  setup\n    const data = [{ children: [{ title: "A" }, { title: "B" }] }];\n    const groups = data;\n  each group in groups key group\n    each item in group.children key item.title\n      p Name: #{item.title}!\nList\n'.replaceAll('\n', '\r\n')
+  const { project, filename, request } = fixture(source)
+  project.editElement({ ...request, line: 7, column: 7, tag: 'p', group: 'properties', name: 'textContent', value: 'Name: C!', textContext: { value: 'Name: B!', index: 1, count: 2 } })
+  const after = readFileSync(filename, 'utf8')
+  expect(after).toContain('title: "A" }, { title: "C"')
+  expect(after).toContain('p Name: #{item.title}!')
+  expect(after.split('\r\n')).toHaveLength(source.split('\r\n').length)
+})
+
+test('imported arrays provide their declaration link and cannot be replaced by template text', () => {
+  const source = 'import { labels as items } from "./labels.ts"\neach item in items key item\n  p #{item}\n'
+  const { project, filename, request } = fixture(source)
+  const imported = join(filename, '../labels.ts')
+  const data = '// Labels\nexport const labels = ["One", "Two"];\n'
+  writeFileSync(imported, data)
+  const edit = { ...request, line: 3, column: 3, tag: 'p', group: 'properties' as const, name: 'textContent', value: 'Changed', textContext: { value: 'Two', index: 1, count: 2 } }
+  expect(project.elementTextSource(edit)).toMatchObject({ kind: 'imported', path: imported, line: 2, label: 'items' })
+  expect(() => project.editElement(edit)).toThrow('imported')
+  expect(readFileSync(filename, 'utf8')).toBe(source)
+  expect(readFileSync(imported, 'utf8')).toBe(data)
+})
+
+test('imported array aliases and tsconfig path aliases still link to the data file', () => {
+  const source = 'import { labels } from "@/labels"\nsetup\n  const items = labels;\neach item in items key item\n  p #{item}\n'
+  const { project, filename, request } = fixture(source)
+  writeFileSync(join(filename, '../../tsconfig.json'), JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } }))
+  const imported = join(filename, '../labels.ts')
+  writeFileSync(imported, 'export const labels = ["One"];\n')
+  expect(project.elementTextSource({ ...request, line: 5, column: 3, tag: 'p', textContext: { value: 'One', index: 0, count: 1 } })).toMatchObject({ kind: 'imported', path: imported, label: 'labels' })
+})
+
+test('computed or ambiguous mapped text is refused without modifying the template or data', () => {
+  for (const [source, line, value, count] of [
+    ['setup\n  const items = ["Same", "Same"];\neach item in items key item\n  p #{item}\n', 4, 'Same', 1],
+    ['setup\n  const items = ["One"];\neach item in items key item\n  p #{item.toUpperCase()}\n', 4, 'ONE', 1],
+    ['module\n  const items = ["Module"];\nprops { items }: { items: string[] }\neach item in items key item\n  p #{item}\n', 5, 'Module', 1],
+  ] as const) {
+    const { project, filename, request } = fixture(source)
+    expect(() => project.editElement({ ...request, line, column: 3, tag: 'p', group: 'properties', name: 'textContent', value: 'Changed', textContext: { value, index: 0, count } })).toThrow()
+    expect(readFileSync(filename, 'utf8')).toBe(source)
+  }
+})

@@ -6,6 +6,7 @@ import ScrubField from '../components/scrub-field.btsx'
 import { numericStyle } from './style-controls.ts'
 import type { ElementStyleTarget } from '../shared/types.ts'
 import { cx } from './util.ts'
+import { openInEditor } from './api.ts'
 
 module
   interface ElementsPanelProps {
@@ -75,7 +76,7 @@ setup
   const [snapshot, setSnapshot] = useState(() => inspection?.capture() ?? null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => inspection?.capture() ?? null);
   const savedKey = useRef<string | null>(null);
-  const [styleTarget, setStyleTarget] = useState<ElementStyleTarget>(inspection?.styleTarget ?? 'inline');
+  const [styleTarget, setStyleTarget] = useState<ElementStyleTarget>(inspection?.styleTarget ?? 'tailwind');
   const [cssPath, setCssPath] = useState(inspection?.cssPath ?? '');
   const [cssSelector, setCssSelector] = useState(inspection?.cssSelector ?? '');
   const chooseStyleTarget = (target: ElementStyleTarget) => { setStyleTarget(target); if (inspection) inspection.styleTarget = target; };
@@ -146,7 +147,7 @@ setup
     return group !== 'styles' || showAll || entry.inline || COMMON_STYLES.has(entry.name);
   });
   const sections = group === 'styles' ? groupStyles(rows) : group === 'properties' ? groupProperties(rows) : groupAttributes(rows);
-  const textProperty = snapshot?.properties.find((property) => property.name === 'textContent' && property.editable);
+  const textProperty = snapshot?.properties.find((property) => property.name === 'textContent' && (property.editable || snapshot.textSource?.kind === 'imported' || snapshot.textSource?.kind === 'unsupported'));
   // Explicit open/closed choices per tab and section; a search shows every match.
   const [folds, setFolds] = useState<Readonly<Record<string, boolean>>>({});
   const isOpen = (section: ElementSection) => search !== '' || (folds[`${group}:${section.id}`] ?? !section.collapsed);
@@ -185,6 +186,13 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
         p.bdt-element-notice(role="status") This element has no Beast source location. Enable source tagging to save edits.
       if !snapshot.connected
         p.bdt-element-notice(role="status") This element was removed from the page. Pick it again to continue editing.
+      if snapshot.textSource?.kind === 'array'
+        p.bdt-element-notice(role="status") Text edits update #{snapshot.textSource.label} in this file.
+      elseif snapshot.textSource?.kind === 'imported' || snapshot.textSource?.kind === 'unsupported'
+        .bdt-element-notice.bdt-element-text-source(role="status")
+          span #{snapshot.textSource.message}
+          if snapshot.textSource.path
+            button.bdt-link(type="button" title="Open array source in editor" onClick={() => openInEditor(snapshot.textSource!.path!, snapshot.textSource!.line, snapshot.textSource!.column)}) #{snapshot.textSource.path}:#{snapshot.textSource.line}
       if error !== null
         p.bdt-element-notice.is-error(role="alert") #{error}
       .bdt-element-workspace
@@ -200,9 +208,9 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
               .bdt-element-filter
                 label.bdt-dim(htmlFor="bdt-style-target") Save styles to
                 select.bdt-input(id="bdt-style-target" value={styleTarget} disabled={saving} onChange={(event) => chooseStyleTarget(event.currentTarget.value as ElementStyleTarget)})
+                  option(value="tailwind") Tailwind className
                   option(value="inline") Inline style
                   option(value="css") CSS file
-                  option(value="tailwind") Tailwind className
               if styleTarget === 'css'
                 fragment
                   .bdt-element-filter

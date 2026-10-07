@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'octane'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'octane'
 import type { AnalyzerSettings, ComponentLocation, SourceBlockSelection } from '../shared/types.ts'
-import { openInEditor } from './api.ts'
+import { fetchFile, openInEditor, optimizeComponentTailwind, undoRefactor } from './api.ts'
 import { getRuntimeSnapshot, selectRuntimeNode, subscribeRuntime, type HookCell } from './runtime.ts'
 import Splitter from './Splitter.btsx'
 import SourceBlockEditor from './SourceBlockEditor.btsx'
 import { findWrappers, treeRows, sourceSelections, type TreeRow, type ComponentsView } from './tree.ts'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
-import {Icon} from "../packages/icons/src";
-import { useToggle } from '../hooks/use-toggle.ts'
-
+import { Icon } from '../packages/icons/src'
 
 module
   interface ComponentsPanelProps {
@@ -54,7 +52,7 @@ module
   const BLOCK_INDENT = 10
 
   /** One stripe color per depth, cycling, so a level can be followed down the stack. */
-  const DEPTH_COLORS = ['#ffb86b', '#7cb7ff', '#5fd39a', '#ff7eb6', '#c29bff', '#7fe0d0']
+  const DEPTH_COLORS = ['var(--bdt-depth-1)', 'var(--bdt-depth-2)', 'var(--bdt-depth-3)', 'var(--bdt-depth-4)', 'var(--bdt-depth-5)', 'var(--bdt-depth-6)']
 
   const VIEWS: ReadonlyArray<{ id: ComponentsView; label: string }> = [
     { id: 'blocks', label: 'Blocks' },
@@ -116,6 +114,45 @@ setup
   const detail = runtime.detail;
   const selectedBlock = detail === null ? undefined : sources.get(detail.id)?.block;
   const location = selectedSource === null ? (detail === null ? undefined : components.find((component) => component.name === detail.name)) : components.find((component) => component.name === selectedSource.host && component.path === selectedSource.path);
+  const [tailwindBusy, setTailwindBusy] = useState(false);
+  const tailwindPending = useRef(false);
+  const [tailwindResult, setTailwindResult] = useState<{ path: string; host: string; message: string; error: boolean; undoId: string | null } | null>(null);
+  const [sourceRevision, setSourceRevision] = useState(0);
+  const tailwindStatus = tailwindResult?.path === location?.path && tailwindResult?.host === location?.name ? tailwindResult : null;
+  const optimizeClasses = async () => {
+    if (!location || tailwindPending.current) return;
+    const target = location;
+    tailwindPending.current = true;
+    setTailwindBusy(true);
+    setTailwindResult(null);
+    try {
+      const file = await fetchFile(target.path, settings);
+      const result = await optimizeComponentTailwind({ path: target.path, host: target.name, hash: file.hash });
+      setTailwindResult({ path: target.path, host: target.name, message: result.changed ? 'Optimized!' : 'All good.', error: false, undoId: result.undoId ?? tailwindStatus?.undoId ?? null });
+      if (result.changed) setSourceRevision((value) => value + 1);
+    } catch (error) {
+      setTailwindResult({ path: target.path, host: target.name, message: error instanceof Error ? error.message : String(error), error: true, undoId: null });
+    } finally {
+      tailwindPending.current = false;
+      setTailwindBusy(false);
+    }
+  };
+  const undoTailwind = async () => {
+    if (!tailwindStatus?.undoId || tailwindPending.current) return;
+    const previous = tailwindStatus;
+    tailwindPending.current = true;
+    setTailwindBusy(true);
+    try {
+      await undoRefactor(previous.undoId!);
+      setTailwindResult({ ...previous, message: 'Undo Complete.', error: false, undoId: null });
+      setSourceRevision((value) => value + 1);
+    } catch (error) {
+      setTailwindResult({ ...previous, message: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      tailwindPending.current = false;
+      setTailwindBusy(false);
+    }
+  };
   const hooks = detail === null ? [] : hookRows(detail.hooks, location);
   const context = detail === null ? [] : detail.context.map((entry, index) => ({ key: `context-${index}`, label: entry.name, kind: 'context', value: entry.value }));
   const values = [...hooks, ...context];
@@ -132,10 +169,16 @@ setup
     return next;
   });
 
-  const [isSearchExpanded, toggleSearch] = useToggle();
-  const handleToggleSearch = (e: MouseEvent | FocusEvent) => {
-    e.preventDefault();
-    void toggleSearch();
+  const [isSearchExpanded, setSearchExpanded] = useState(false);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+  const searchTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (isSearchExpanded) searchInput.current?.focus();
+  }, [isSearchExpanded]);
+  const closeSearch = () => {
+    setQuery('');
+    setSearchExpanded(false);
+    searchTrigger.current?.focus();
   };
 
 if runtime.status === 'unavailable'
@@ -151,7 +194,7 @@ elseif runtime.status === 'connecting'
 else
   fragment
     .bdt-pane
-      .bdt-toolbar
+      .bdt-toolbar.bdt-component-toolbar
         .bdt-segment(role="group" aria-label="Tree style")
           each option in VIEWS key option.id
             button(
@@ -163,25 +206,35 @@ else
               | #{option.label}
 
         if isSearchExpanded
-          input.bdt-input(
-            ~ type="search"
-            ~ placeholder="Filter components"
-            ~ aria-label="Filter components"
-            ~ onBlur={handleToggleSearch}
-            ~ value={query}
-            ~ onInput={(event) => setQuery(event.currentTarget.value)}
-            ~ className={' w-full!'}
-            ~ )
+          .bdt-component-search
+            Icon(name="search" size={12})
+            input.bdt-input(
+              ~ ref={searchInput}
+              ~ id="bdt-component-search"
+              ~ type="search"
+              ~ placeholder="Filter components"
+              ~ aria-label="Filter components"
+              ~ value={query}
+              ~ onInput={(event) => setQuery(event.currentTarget.value)}
+              ~ onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeSearch(); } }}
+              ~ )
         else
-          div(className='flex justify-between items-center w-full! border gap-12')
-            label.bdt-check  Control flow
-              input(type="checkbox" checked={showControlFlow} onChange={(event) => onShowControlFlowChange(event.currentTarget.checked)})
-            button(onClick={handleToggleSearch})
-              Icon(name="search" size={12} className='text-[var(--bdt-dim-2)] place-self-end')
-        .bdt-spacer
+          label.bdt-check.bdt-component-control-flow
+            input(type="checkbox" checked={showControlFlow} onChange={(event) => onShowControlFlowChange(event.currentTarget.checked)})
+            | Control flow
+        button.bdt-component-search-toggle(
+          ~ ref={searchTrigger}
+          ~ type="button"
+          ~ aria-label={isSearchExpanded ? 'Close component search' : 'Search components'}
+          ~ title={isSearchExpanded ? 'Close component search (Escape)' : 'Search components'}
+          ~ aria-expanded={isSearchExpanded}
+          ~ aria-controls={isSearchExpanded ? 'bdt-component-search' : undefined}
+          ~ onClick={() => { if (isSearchExpanded) closeSearch(); else setSearchExpanded(true); }}
+          ~ )
+          Icon(name={isSearchExpanded ? 'close' : 'search'} size={14})
       .bdt-scroll
         if rows.length === 0
-          p.bdt-empty #{query === '' ? 'No Octane roots are mounted.' : 'Nothing matches that filter.'}
+          p.bdt-empty #{search === '' ? 'No Octane roots are mounted.' : 'Nothing matches that filter.'}
         elseif view === 'blocks'
           div.bdt-blocks(role="tree" aria-label="Component blocks")
             if wrappers !== null && search === ''
@@ -259,10 +312,17 @@ else
             fragment
               button.bdt-link(type="button" title="Open in editor" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) #{location.path}:#{location.line}
               .bdt-detail-actions
-                button.bdt-button(type="button" onClick={() => onViewSource(location.path, location.line)}) BTSX → TSRX
+                button.bdt-button(type="button" onClick={() => onViewSource(location.path, location.line)}) Beast → Octane
                 button.bdt-button(type="button" onClick={() => onAnalyze(location.path)}) Analyze file
                 button.bdt-button(type="button" onClick={() => openInEditor(location.absolutePath, location.line, location.column)}) Open in editor
-      SourceBlockEditor(selection={selectedSource} settings={settings} onSelectionChange={setSelectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
+                button.bdt-button#tailwind(type="button" title="Optimize Tailwind classes in this component" aria-label="Optimize Tailwind classes in this component" aria-busy={tailwindBusy} disabled={tailwindBusy} onClick={optimizeClasses})
+                  Icon(name='tailwind' className='text-[#00bcff]!')
+              if tailwindStatus
+                fragment
+                  p.bdt-dim(role={tailwindStatus.error ? 'alert' : 'status'}) #{tailwindStatus.message}
+                  if tailwindStatus.undoId
+                    button.bdt-button(type="button" disabled={tailwindBusy} onClick={undoTailwind}) Undo
+      SourceBlockEditor(selection={selectedSource} settings={settings} sourceRevision={sourceRevision} onSelectionChange={setSelectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
       if detail !== null
         details.bdt-runtime-details
           summary State, context & effects

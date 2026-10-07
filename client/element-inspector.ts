@@ -1,5 +1,5 @@
-import { fetchFile, saveElementEdit, undoRefactor } from './api.ts'
-import { DEFAULT_SETTINGS, type ElementEditRequest, type ElementStyleTarget, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
+import { fetchElementTextSource, fetchFile, saveElementEdit, undoRefactor } from './api.ts'
+import { DEFAULT_SETTINGS, type ElementEditRequest, type ElementStyleTarget, type ElementTextContext, type ElementTextSource, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
 
 export type ElementPropertyGroup = 'styles' | 'attributes' | 'properties'
 export interface ElementProperty {
@@ -27,6 +27,7 @@ export interface ElementSnapshot {
   attributes: ElementProperty[]
   styles: ElementProperty[]
   properties: ElementProperty[]
+  textSource?: ElementTextSource | null
 }
 
 const EDITABLE_PROPERTIES = new Set([
@@ -123,7 +124,8 @@ export class ElementInspection {
   #version = 0
   #saved: Array<{ id: string; hash: string }> = []
   #listeners = new Set<() => void>()
-  styleTarget: ElementStyleTarget = 'inline'
+  styleTarget: ElementStyleTarget = 'tailwind'
+  #textSource: ElementTextSource | null = null
   cssPath = ''
   cssSelector = ''
   saving = false
@@ -146,7 +148,7 @@ export class ElementInspection {
     this.#source = element.getAttribute(SOURCE_ATTRIBUTE)
     this.#index = [...document.querySelectorAll(`[${SOURCE_ATTRIBUTE}]`)].filter((el) => el.getAttribute(SOURCE_ATTRIBUTE) === this.#source).indexOf(element)
     const location = this.#location()
-    this.#ready = location ? fetchFile(location.path, DEFAULT_SETTINGS).then((report) => { this.#hash = report.hash }).catch((error) => {
+    this.#ready = location ? fetchFile(location.path, DEFAULT_SETTINGS).then(async (report) => { this.#hash = report.hash; await this.#loadTextSource() }).catch((error) => {
       this.error = error instanceof Error ? error.message : String(error)
       this.#notify()
     }) : Promise.resolve()
@@ -159,7 +161,17 @@ export class ElementInspection {
     if (this.saving) throw new Error('Wait for the current edit to finish saving.')
     if (!this.#source) throw new Error('This element has no Beast source location. Enable source tagging to save edits.')
   }
-  async #save(change: Pick<ElementEditRequest, 'group' | 'name' | 'value' | 'declarations' | 'cssText'>): Promise<void> {
+  #textContext(): ElementTextContext {
+    const matches = [...document.querySelectorAll(`[${SOURCE_ATTRIBUTE}]`)].filter((el) => el.getAttribute(SOURCE_ATTRIBUTE) === this.#source)
+    return { value: this.element.textContent ?? '', index: matches.indexOf(this.element), count: matches.length }
+  }
+  async #loadTextSource(): Promise<void> {
+    const location = this.#location()
+    if (!location || !Array.from(this.element.childNodes).every((node) => node.nodeType === 3)) return
+    this.#textSource = await fetchElementTextSource({ ...location, tag: this.element.localName, textContext: this.#textContext() })
+    this.#notify()
+  }
+  async #save(change: Pick<ElementEditRequest, 'group' | 'name' | 'value' | 'declarations' | 'cssText' | 'textContext'>): Promise<void> {
     await this.#ready
     const location = this.#location()
     if (!location || !this.#hash) throw new Error(this.error ?? 'The source file could not be loaded. Pick the element again.')
@@ -172,6 +184,11 @@ export class ElementInspection {
   }
   async edit(group: ElementPropertyGroup, name: string, value: string | null): Promise<void> {
     this.#check()
+    await this.#ready
+    this.#check()
+    const textEdit = group === 'properties' && TEXT_PROPERTIES.has(name)
+    if (textEdit && (this.#textSource?.kind === 'imported' || this.#textSource?.kind === 'unsupported')) throw new Error(this.#textSource.message ?? 'Edit this array in source.')
+    const textContext = textEdit ? this.#textContext() : undefined
     const version = this.#version
     const element = this.element
     const beforeStyle = group === 'styles' ? element.getAttribute('style') : null
@@ -185,6 +202,7 @@ export class ElementInspection {
     this.#notify()
     try {
       await this.#save({ group, name, value: group === 'properties' ? Reflect.get(this.element, name) as string | number | boolean : value,
+        ...(textContext ? { textContext } : {}),
         ...(group === 'styles' ? { declarations: { [name]: value }, cssText: inlineStyle(this.element).cssText } : {}) })
       if (group === 'styles' && this.styleTarget !== 'inline') {
         if (beforeStyle === null) element.removeAttribute('style')
@@ -198,7 +216,13 @@ export class ElementInspection {
   }
   get canSave(): boolean { return this.#source !== null }
   get undoCount(): number { return this.#saved.length }
-  capture(): ElementSnapshot { return captureElement(this.element) }
+  capture(): ElementSnapshot {
+    const snapshot = captureElement(this.element)
+    if (this.#textSource?.kind === 'imported' || this.#textSource?.kind === 'unsupported') {
+      snapshot.properties = snapshot.properties.map((property) => TEXT_PROPERTIES.has(property.name) ? { ...property, editable: false } : property)
+    }
+    return { ...snapshot, textSource: this.#textSource }
+  }
 
   #pushUndo(step: () => void): void {
     this.#version++

@@ -92,10 +92,19 @@ export function saveElementEdit(request: import('../shared/types.ts').ElementEdi
   return post('/element-edit', request)
 }
 
+export function fetchElementTextSource(request: import('../shared/types.ts').ElementTextRequest): Promise<import('../shared/types.ts').ElementTextSource> {
+  const { textContext, ...location } = request
+  return get('/element-text-source', { ...location, ...textContext })
+}
+
 export function fetchSourceBlock(selection: import('../shared/types.ts').SourceBlockSelection): Promise<import('../shared/types.ts').SourceBlockReport> {
   return get('/source-block', { ...selection })
 }
 
 export function saveBlockEdit(request: import('../shared/types.ts').BlockEditRequest): Promise<import('../shared/types.ts').BlockEditResult> {
   return post('/block-edit', request)
+}
+
+export function optimizeComponentTailwind(request: import('../shared/types.ts').TailwindOptimizeRequest): Promise<import('../shared/types.ts').TailwindOptimizeResult> {
+  return post('/tailwind-optimize', request)
 }

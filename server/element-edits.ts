@@ -2,6 +2,7 @@ import type { BeastDocument, BeastNode, ElementNode } from 'beast-tsrx'
 import type { ElementEditRequest } from '../shared/types.js'
 import { literalString, removeStyleString, replaceStyleObject, replaceTailwindClasses } from './style-edits.js'
 import { RefactorError } from './refactor.js'
+import { editMappedText } from './element-text.js'
 
 function elements(nodes: readonly BeastNode[]): ElementNode[] {
   return nodes.flatMap((node): ElementNode[] => {
@@ -79,6 +80,8 @@ export function editElement(document: BeastDocument, source: string, request: El
     if (!/^[a-zA-Z_][\w:.-]*$/.test(name) || /^on/i.test(name) || name.startsWith('data-beast-') || ['innerHTML', 'outerHTML', 'srcdoc'].includes(name)) throw new RefactorError('This property cannot be saved from the Elements panel.', 422)
     if (request.group === 'properties' && ['textContent', 'innerText'].includes(name)) {
       if (node.children.some((child) => child.kind !== 'text')) throw new RefactorError('Text edits cannot replace child elements.', 422)
+      const mapped = editMappedText(document, source, { ...request, textContext: request.textContext ?? { value: '', index: 0, count: 0 } }, String(value ?? ''))
+      if (mapped !== null) return mapped
       text = `#{${literal(value ?? '')}}`
       for (const child of node.children) patches.push({ start: child.span.start.offset, end: child.span.end.offset, value: (source.includes('\r\n') ? '\r\n' : '\n').repeat((source.slice(child.span.start.offset, child.span.end.offset).match(/\n/g) ?? []).length) })
     } else {

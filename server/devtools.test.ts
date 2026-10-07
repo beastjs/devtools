@@ -27,6 +27,24 @@ async function fixture(editorUrl = (file: string) => `/editor?file=${encodeURICo
   return { running, other, devtools, get, post }
 }
 
+test('Tailwind button API saves only the selected component and supports undo', async () => {
+  const { running, get, post } = await fixture()
+  const source = 'component Card\n  div(class="pr-[12px] pl-[12px]")\n\ndiv(class="p-[8px]")\n'
+  writeFileSync(running.appPath, source)
+  const file = await (await get('/file?path=src/App.btsx')).json() as FileReport
+  const request = { path: file.path, host: 'Card', hash: file.hash }
+  expect((await post('/tailwind-optimize', { ...request, host: '' })).status).toBe(422)
+  expect((await post('/tailwind-optimize', request, { Origin: 'http://other.example' })).status).toBe(403)
+  const response = await post('/tailwind-optimize', request)
+  expect(response.status).toBe(200)
+  const result = await response.json()
+  expect(result.changed).toBe(true)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source.replace('class="pr-[12px] pl-[12px]"', 'className={"px-3"}'))
+  expect((await post('/tailwind-optimize', request)).status).toBe(409)
+  expect((await post('/undo', { id: result.undoId })).status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source)
+})
+
 test('unexpected exceptions are logged locally without exposing details over HTTP', async () => {
   const error = new Error('Secret project path and stack details')
   const logged = spyOn(console, 'error').mockImplementation(() => {})
@@ -276,6 +294,26 @@ test('element endpoint forwards CSS and Tailwind destinations and supports undo'
   expect(savedClasses.status).toBe(200)
   expect(readFileSync(running.appPath, 'utf8')).toContain('w-[20px]')
   expect(readFileSync(running.appPath, 'utf8')).not.toContain('w-10')
+})
+
+test('element endpoints identify mapped array text, forward instance context and undo data edits', async () => {
+  const { running, get, post } = await fixture()
+  const source = 'setup\n  const items = ["Same", "Same"];\neach item in items key item\n  p #{item}\n'
+  writeFileSync(running.appPath, source)
+  const file = await (await get('/file?path=src/App.btsx')).json() as FileReport
+  const location = { path: file.path, line: 4, column: 3, tag: 'p' }
+  const query = new URLSearchParams({ ...location, line: '4', column: '3', value: 'Same', index: '1', count: '2' })
+  const metadata = await get(`/element-text-source?${query}`)
+  expect(metadata.status).toBe(200)
+  expect(await metadata.json()).toMatchObject({ kind: 'array', label: 'items', line: 2 })
+  const edit = { ...location, hash: file.hash, group: 'properties', name: 'textContent', value: 'Second', textContext: { value: 'Same', index: 1, count: 2 } }
+  expect((await post('/element-edit', { ...edit, textContext: { ...edit.textContext, index: -1 } })).status).toBe(422)
+  const saved = await post('/element-edit', edit)
+  expect(saved.status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toContain('["Same", "Second"]')
+  expect(readFileSync(running.appPath, 'utf8')).toContain('p #{item}')
+  expect((await post('/undo', { id: (await saved.json()).undoId })).status).toBe(200)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source)
 })
 
 test('source blocks can be read, edited, conflict-checked and undone through the API', async () => {
