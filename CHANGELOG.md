@@ -2,6 +2,23 @@
 
 All notable changes to `@beastjs/devtools` are recorded here.
 
+## 0.1.21 (2026-10-08)
+
+### Added
+
+- Optimize Tailwind classes in the selected component: rename `class` to
+  `className`, convert pixel spacing and sizing to the Tailwind scale, and
+  combine matching padding, margin, gap, and corner radius utilities.
+- Normalize numeric z-index classes and standard border radius values,
+  preserving variants, importance, and supported negative values.
+- Save Tailwind optimizations with conflict checks, source refresh, and undo.
+- Edit mapped text in source arrays, including imported data, from the
+  Elements panel.
+
+### Changed
+
+- Improve component search controls, refactor metrics, and panel styling.
+
 ## 0.1.17 (2026-10-04)
 
 ### Added
