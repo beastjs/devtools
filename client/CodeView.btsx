@@ -34,6 +34,7 @@ module
     firstLineNumber?: number
     documentKey?: string
     classControls?: boolean
+    onEditFile?: () => void
   }
 
   const EMPTY: readonly number[] = []
@@ -43,7 +44,7 @@ module
     return depth > limit ? 'is-over' : depth === limit ? 'is-near' : ''
   }
 
-props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave, onSourceChange, onBlur, onSave, vim = false, disabled = false, firstLineNumber = 1, documentKey = '', classControls = false }: CodeViewProps
+props { source, language, linked = EMPTY, activeLine = null, ranges = NO_RANGES, errorLine = null, depths = null, depthLimit = 5, scrollTo = null, label = 'Source code', onLineEnter, onLineClick, onLeave, onSourceChange, onBlur, onSave, vim = false, disabled = false, firstLineNumber = 1, documentKey = '', classControls = false, onEditFile }: CodeViewProps
 setup
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rows = useMemo(() => {
@@ -81,13 +82,16 @@ setup
     if (scrollTo !== null) scrollToLine(containerRef.current, scrollTo.line);
   }, [scrollTo, rows, foldState]);
 if onSourceChange !== undefined
-  CodeEditor(source={source} language={language} firstLineNumber={firstLineNumber} label={label} vim={vim} disabled={disabled} documentKey={documentKey} onChange={onSourceChange} onBlur={onBlur} onSave={onSave} onLineClick={onLineClick} selectedLine={activeLine} classesCollapsed={classesCollapsed} showClassControls={classControls} onToggleClasses={toggleClasses})
+  CodeEditor(source={source} language={language} firstLineNumber={firstLineNumber} label={label} vim={vim} disabled={disabled} documentKey={documentKey} onChange={onSourceChange} onBlur={onBlur} onSave={onSave} onLineClick={onLineClick} selectedLine={activeLine} scrollTo={scrollTo} classesCollapsed={classesCollapsed} showClassControls={classControls} onToggleClasses={toggleClasses})
 else
   MessageScrollerProvider(autoScroll={false} defaultScrollPosition="start")
     MessageScroller(className="bdt-code-scroller" onMouseLeave={() => onLeave?.()})
-      if classControls && classSpans.length > 0
+      if (classControls && classSpans.length > 0) || onEditFile !== undefined
         .bdt-code-controls
-          button.bdt-button(type="button" aria-pressed={classesCollapsed} onClick={toggleClasses}) #{classesCollapsed ? 'Expand classes' : 'Collapse classes'}
+          if classControls && classSpans.length > 0
+            button.bdt-button(type="button" aria-pressed={classesCollapsed} onClick={toggleClasses}) #{classesCollapsed ? 'Expand classes' : 'Collapse classes'}
+          if onEditFile !== undefined
+            button.bdt-button(type="button" onClick={onEditFile}) Edit file
       MessageScrollerViewport(className="bdt-code" ref={containerRef} aria-label={label} style={language === 'tsrx' ? { tabSize: 2 } : undefined} preserveScrollOnPrepend={false})
         MessageScrollerContent(className="bdt-code-inner" role="presentation" aria-live="off")
           each row, ri in visibleRows key row.number

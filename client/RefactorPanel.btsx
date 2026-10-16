@@ -20,6 +20,7 @@ module
     settings: AnalyzerSettings
     recent: RecentRefactor | null
     onSelectFile: (path: string) => void
+    onEditFile: (path: string, line: number, host?: string) => void
     onSettingsChange: (settings: AnalyzerSettings) => void
     onRecentChange: (recent: RecentRefactor | null) => void
   }
@@ -82,7 +83,7 @@ module
     return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : null
   }
 
-props { projectId, files, file, report, loadError, settings, recent, onSelectFile, onSettingsChange, onRecentChange }: RefactorPanelProps
+props { projectId, files, file, report, loadError, settings, recent, onSelectFile, onEditFile, onSettingsChange, onRecentChange }: RefactorPanelProps
 setup
   const [names, setNames] = useState<Record<string, string>>({});
   const nameOf = (suggestion: RefactorSuggestion) => names[suggestion.id] ?? suggestion.name;
@@ -183,6 +184,7 @@ setup
     setSelectedId(null);
     setOpenId(null);
     setPending(null);
+    setScroll(null);
   }, [file]);
   // A preview describes one version of the file; drop it once the file changes.
   useEffect(() => {
@@ -391,6 +393,7 @@ setup
       if current !== null && analysis !== null
         CodeView(
           ~ classControls={true}
+          ~ onEditFile={() => onEditFile(current.path, selected?.startLine ?? scroll?.line ?? 1, selected?.host)}
           ~ source={current.source}
           ~ language="btsx"
           ~ label="BTSX source with nesting depth"

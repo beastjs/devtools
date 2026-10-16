@@ -2,12 +2,13 @@
 import { Annotation, Compartment, EditorState, Prec, StateField, Transaction, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, type DecorationSet } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { codeFolding, foldAll, unfoldAll, foldGutter, foldKeymap, foldService, indentService, indentUnit } from '@codemirror/language'
+import { codeFolding, foldAll, unfoldAll, foldedRanges, unfoldEffect, foldGutter, foldKeymap, foldService, indentService, indentUnit } from '@codemirror/language'
 import { search, searchKeymap } from '@codemirror/search'
 import { Vim, vim } from '@replit/codemirror-vim'
 import { highlight, type Language } from './highlight.ts'
 import { codeFolds } from './code-folds.ts'
 import { collapseClasses, editorClassFolding } from './editor-class-folds.ts'
+import type { ScrollTarget } from './util.ts'
 
 export interface CodeEditorOptions {
   source: string
@@ -21,6 +22,7 @@ export interface CodeEditorOptions {
   onSave?: (source: string) => void
   onLineClick?: (line: number) => void
   selectedLine?: number | null
+  scrollTo?: ScrollTarget | null
   classesCollapsed?: boolean
 }
 
@@ -161,6 +163,16 @@ export function createCodeEditor(parent: HTMLElement, initial: CodeEditorOptions
     }),
   })
   saves.set(view, () => { if (!options.disabled) options.onSave?.(view.state.doc.toString()) })
+  const revealLine = () => {
+    if (!options.scrollTo) return
+    const line = options.scrollTo.line - options.firstLineNumber + 1
+    if (line < 1 || line > view.state.doc.lines) return
+    const position = view.state.doc.line(line).from
+    const effects = [EditorView.scrollIntoView(position, { y: 'center' })]
+    foldedRanges(view.state).between(position, position, (from, to) => { effects.push(unfoldEffect.of({ from, to })) })
+    view.dispatch({ selection: { anchor: position }, effects })
+  }
+  revealLine()
   return {
     view,
     collapseAll: () => { foldAll(view) },
@@ -186,6 +198,7 @@ export function createCodeEditor(parent: HTMLElement, initial: CodeEditorOptions
         changes: !replace || current === source ? undefined : { from, to: oldEnd, insert: source.slice(from, newEnd) },
         effects, annotations: [externalChange.of(true), Transaction.addToHistory.of(false)],
       })
+      if (previous.scrollTo !== next.scrollTo || previous.firstLineNumber !== next.firstLineNumber) revealLine()
     },
     destroy() { saves.delete(view); view.destroy() },
   }

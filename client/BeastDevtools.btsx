@@ -12,6 +12,7 @@ import Topbar from './Topbar.btsx'
 import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
 import { listenForPickerEscape, startComponentFinder, startElementPicker, type ElementTool } from './element-tools.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
+import type { SourceFocus } from './source-navigation.ts'
 import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, TABS, type RecentRefactor, type ScrollTarget, type TabId, type TriggerPosition } from './util.ts'
 
 module
@@ -88,6 +89,7 @@ setup
     return () => window.clearTimeout(timer);
   }, [settings]);
   const [focus, setFocus] = useState<ScrollTarget | null>(null);
+  const [sourceFocus, setSourceFocus] = useState<SourceFocus | null>(null);
   const [revision, setRevision] = useState(0);
   const [projectId, setProjectId] = useState('');
   const projectGeneration = useRef(0);
@@ -230,6 +232,7 @@ setup
     setFile(null);
     setReport(null);
     setFocus(null);
+    setSourceFocus(null);
     setRecent(null);
     setLoadError(null);
     setTab('inspector');
@@ -243,6 +246,11 @@ setup
   const analyze = (path: string) => {
     setFile(path);
     setTab('refactor');
+  };
+  const editFile = (path: string, line: number, host?: string) => {
+    setFile(path);
+    setSourceFocus({ path, host, ...scrollTarget(line) });
+    setTab('components');
   };
 
 if open || docked
@@ -284,11 +292,12 @@ if open || docked
       switch tab
         case 'components'
           if projectId !== ''
-            ProjectComponentsPanel(key={projectId} projectId={projectId} project={project} loadError={loadError} settings={debouncedSettings} onViewSource={viewSource} onAnalyze={analyze})
+            ProjectComponentsPanel(key={projectId} projectId={projectId} project={project} loadError={loadError} settings={debouncedSettings} sourceFocus={sourceFocus} onViewSource={viewSource} onAnalyze={analyze})
           else
             ComponentsPanel(
               ~ key={projectId}
               ~ settings={debouncedSettings}
+              ~ sourceFocus={sourceFocus}
               ~ components={project?.components ?? EMPTY_COMPONENTS}
               ~ entryComponents={project?.entryComponents ?? EMPTY_STRINGS}
               ~ view={componentsView}
@@ -325,6 +334,7 @@ if open || docked
             ~ recent={recent}
             ~ onSelectFile={setFile}
             ~ onSettingsChange={setSettings}
+            ~ onEditFile={editFile}
             ~ onRecentChange={(value) => { if (generation === projectGeneration.current) setRecent(value); }}
             ~ )
 DevtoolsInterface(theme={theme} triggerPosition={triggerPosition} open={open} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} setOpen={setOpen})

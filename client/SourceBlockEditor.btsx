@@ -6,6 +6,7 @@ import CodeView from './CodeView.btsx'
 import { loadVimMode, storeVimMode } from './code-editor.ts'
 import MiniRefactor from './MiniRefactor.btsx'
 import { templateLine } from './refactor-actions.ts'
+import type { ScrollTarget } from './util.ts'
 
 module
   interface EditorState {
@@ -22,7 +23,7 @@ module
   const identity = (projectId: string, selection: SourceBlockSelection | null) => `${projectId}:` + (selection === null ? '' : `${selection.path}:${selection.host}:${selection.line}:${selection.kind}`)
   const message = (error: unknown) => error instanceof Error ? error.message : String(error)
 
-props { selection, projectId = '', settings = DEFAULT_SETTINGS, sourceRevision = 0, onSelectionChange, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; projectId?: string; settings?: AnalyzerSettings; sourceRevision?: number; onSelectionChange?: (selection: SourceBlockSelection) => void; selectionMessage?: string }
+props { selection, projectId = '', settings = DEFAULT_SETTINGS, sourceRevision = 0, scrollTo = null, onSelectionChange, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; projectId?: string; settings?: AnalyzerSettings; sourceRevision?: number; scrollTo?: ScrollTarget | null; onSelectionChange?: (selection: SourceBlockSelection) => void; selectionMessage?: string }
 setup
   const key = identity(projectId, selection);
   const active = useRef(key);
@@ -82,7 +83,8 @@ setup
     }
   }), [projectId]);
   const dirty = state.report !== null && state.draft !== state.report.code;
-  const refactorLine = refactorTarget?.key === key && refactorTarget.hash === state.report?.hash ? refactorTarget.line : state.report?.block.templateLine ?? state.report?.block.startLine ?? 1;
+  const sourceScroll = scrollTo !== null && state.report && state.report.block.startLine <= scrollTo.line && scrollTo.line <= state.report.block.endLine ? scrollTo : null;
+  const refactorLine = refactorTarget?.key === key && refactorTarget.hash === state.report?.hash ? refactorTarget.line : sourceScroll?.line ?? state.report?.block.templateLine ?? state.report?.block.startLine ?? 1;
   const selectRefactorLine = (line: number) => {
     const current = drafts.current.get(key);
     if (current?.report && !current.saving && !refactoring && !current.stale && current.draft === current.report.code) setRefactorTarget({ key, hash: current.report.hash, line });
@@ -173,7 +175,7 @@ section.bdt-block-editor(aria-label="Selected source block" aria-busy={state.loa
       MiniRefactor(projectId={projectId} report={state.report} line={refactorLine} settings={settings} disabled={dirty || state.stale || state.saving} canApply={canRefactor} onBusyChange={changeRefactorBusy} onApplied={refactored})
       if state.stale
         p.bdt-editor-error(role="status") Source changed on disk. Your draft is kept; reload before saving.
-      CodeView(source={state.draft} language="btsx" label="Edit source block" firstLineNumber={state.report.block.startLine} documentKey={key} onSourceChange={changeDraft} onBlur={normalize} onSave={save} vim={vim} disabled={state.saving || refactoring} onLineClick={selectRefactorLine} activeLine={refactorLine} classControls={true})
+      CodeView(source={state.draft} language="btsx" label="Edit source block" firstLineNumber={state.report.block.startLine} documentKey={key} onSourceChange={changeDraft} onBlur={normalize} onSave={save} vim={vim} disabled={state.saving || refactoring} onLineClick={selectRefactorLine} activeLine={refactorLine} scrollTo={sourceScroll} classControls={true})
   else
     .bdt-empty
       button.bdt-button(type="button" onClick={reload}) Retry loading source

@@ -7,6 +7,7 @@ import SourceBlockEditor from './SourceBlockEditor.btsx'
 import { findWrappers, treeRows, sourceSelections, type TreeRow, type ComponentsView } from './tree.ts'
 import { cx, isExpandable, preview, pretty, valueTone } from './util.ts'
 import { Icon } from '../packages/icons/src'
+import { componentSourceSelection, type SourceFocus } from './source-navigation.ts'
 
 module
   interface ComponentsPanelProps {
@@ -20,6 +21,7 @@ module
     onViewSource: (path: string, line: number) => void
     onAnalyze: (path: string) => void
     settings: AnalyzerSettings
+    sourceFocus?: SourceFocus | null
   }
 
   interface ValueRow {
@@ -80,7 +82,7 @@ module
     })
   }
 
-props { components, entryComponents, view, onViewChange, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze, settings }: ComponentsPanelProps
+props { components, entryComponents, view, onViewChange, showControlFlow, onShowControlFlowChange, onViewSource, onAnalyze, settings, sourceFocus = null }: ComponentsPanelProps
 setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [query, setQuery] = useState('');
@@ -102,6 +104,15 @@ setup
     const source = sources.get(runtime.selectedId)?.selection;
     if (source) setSelectedSource((current) => current?.path === source.path && current.host === source.host && current.line === source.line && current.kind === source.kind ? current : source);
   }, [sources, runtime.selectedId]);
+  const appliedFocus = useRef<SourceFocus | null>(null);
+  useEffect(() => {
+    if (sourceFocus === null || appliedFocus.current === sourceFocus) return;
+    const source = componentSourceSelection(components, sourceFocus);
+    if (!source) return;
+    appliedFocus.current = sourceFocus;
+    selectRuntimeNode(null);
+    setSelectedSource(source);
+  }, [sourceFocus, components]);
   const rowSelected = (row: TreeRow) => {
     if (runtime.selectedId !== null) return row.memberIds.includes(runtime.selectedId);
     const source = sources.get(row.node.id)?.selection;
@@ -181,14 +192,14 @@ setup
     searchTrigger.current?.focus();
   };
 
-if runtime.status === 'unavailable'
+if runtime.status === 'unavailable' && sourceFocus === null
   .bdt-empty
     .bdt-empty-card
       p.bdt-empty-title Runtime inspection is off
       p Octane exposes its component tree only when profiling metadata is compiled in. Enable it for dev builds:
       pre.bdt-pre #{"// vite.config.ts\nbeastOctane({ octane: { profile: 'auto' } })\n\n// rspack.config.ts, rsbuild.config.ts\nbeastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } })"}
       p.bdt-dim BTSX → TSRX and Refactor keep working without it.
-elseif runtime.status === 'connecting'
+elseif runtime.status === 'connecting' && sourceFocus === null
   .bdt-empty
     p Connecting to the Octane runtime…
 else
@@ -322,7 +333,7 @@ else
                   p.bdt-dim(role={tailwindStatus.error ? 'alert' : 'status'}) #{tailwindStatus.message}
                   if tailwindStatus.undoId
                     button.bdt-button(type="button" disabled={tailwindBusy} onClick={undoTailwind}) Undo
-      SourceBlockEditor(selection={selectedSource} settings={settings} sourceRevision={sourceRevision} onSelectionChange={setSelectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
+      SourceBlockEditor(selection={selectedSource} settings={settings} sourceRevision={sourceRevision} scrollTo={sourceFocus?.path === selectedSource?.path ? sourceFocus : null} onSelectionChange={setSelectedSource} selectionMessage={detail === null ? undefined : `No editable BTSX source was found for ${detail.name}.`})
       if detail !== null
         details.bdt-runtime-details
           summary State, context & effects
