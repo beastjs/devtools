@@ -1,0 +1,65 @@
+import { useEffect, useState } from 'octane'
+import type { AnalyzerSettings, ComponentLocation, ProjectReport, SourceBlockSelection } from '../shared/types.ts'
+import { openInEditor } from './api.ts'
+import { cx } from './util.ts'
+import SourceBlockEditor from './SourceBlockEditor.btsx'
+import Splitter from './Splitter.btsx'
+
+module
+  interface ProjectComponentsPanelProps {
+    projectId: string
+    project: ProjectReport | null
+    loadError: string | null
+    settings: AnalyzerSettings
+    onViewSource: (path: string, line: number) => void
+    onAnalyze: (path: string) => void
+  }
+
+props { projectId, project, loadError, settings, onViewSource, onAnalyze }: ProjectComponentsPanelProps
+setup
+  const [query, setQuery] = useState('');
+  const [selection, setSelection] = useState<SourceBlockSelection | null>(null);
+  const components = project?.components ?? [];
+  const selected = components.find((component) => component.path === selection?.path && component.name === selection?.host);
+  const search = query.trim().toLowerCase();
+  const filtered = components.filter((component) => !search || `${component.name} ${component.path}`.toLowerCase().includes(search));
+  const select = (component: ComponentLocation) => {
+    const block = component.blocks?.find((block) => block.kind === 'component' && block.scope === component.name);
+    setSelection({ path: component.path, host: component.name, line: block?.startLine ?? (component.local ? component.line : 1), kind: 'component' });
+  };
+  useEffect(() => {
+    if (selection && project && !selected) setSelection(null);
+  }, [project]);
+
+if project === null
+  .bdt-empty(role={loadError ? 'alert' : 'status'}) #{loadError ? `Could not load project components: ${loadError}` : 'Loading project components…'}
+else
+  fragment
+    nav.bdt-sidebar.bdt-project-components(aria-label="Project components")
+      .bdt-toolbar
+        strong Components · #{components.length}
+      .bdt-component-search
+        input.bdt-input(type="search" aria-label="Filter project components" placeholder="Filter components" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
+      .bdt-scroll
+        if filtered.length === 0
+          p.bdt-empty #{search ? 'Nothing matches that filter.' : 'No components found in this folder.'}
+        each component in filtered key `${component.path}:${component.name}`
+          button(type="button" className={cx('bdt-project-component', selected === component && 'is-active')} aria-pressed={selected === component} title={`${component.path}:${component.line}`} onClick={() => select(component)})
+            span.bdt-project-component-name
+              strong #{component.name}
+              if component.local
+                span.bdt-badge local
+            span.bdt-dim.bdt-mono #{component.path}:#{component.line}
+      Splitter(split="sidebar" edge="end" label="Resize component list")
+    .bdt-pane
+      .bdt-toolbar
+        span.bdt-toolbar-title Project source components
+        span.bdt-dim #{project.root}
+      if selected
+        .bdt-toolbar
+          strong #{selected.name}
+          button.bdt-link(type="button" onClick={() => openInEditor(selected.absolutePath, selected.line, selected.column)}) #{selected.path}:#{selected.line}
+          .bdt-spacer
+          button.bdt-button(type="button" onClick={() => onViewSource(selected.path, selected.line)}) Beast → Octane
+          button.bdt-button(type="button" onClick={() => onAnalyze(selected.path)}) Analyze file
+      SourceBlockEditor(key={projectId} projectId={projectId} selection={selected ? selection : null} settings={settings} onSelectionChange={setSelection} selectionMessage="Select a component from this folder to edit its source. Live state is available in the running app.")

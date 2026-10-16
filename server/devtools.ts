@@ -37,9 +37,9 @@ export type Middleware = (req: IncomingMessage, res: ServerResponse, next: (erro
 export interface DevtoolsServer {
   /** Serves requests under `API_BASE`; mount it there so the prefix is stripped. */
   middleware: Middleware
-  /** Report a changed, added or removed file; anything but project `.btsx` sources is ignored. */
+  /** Report changed, added or removed project `.btsx` and `.css` sources. */
   notify: (file: string) => void
-  /** Watch the `include` directories, for bundlers whose dev server does not watch the project. */
+  /** Watch project sources, including CSS outside `include`, when the bundler does not. */
   watch: () => void
   close: () => void
 }
@@ -78,7 +78,8 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
   }
 
   const notify = (file: string) => {
-    if (!file.endsWith('.btsx') || file.startsWith(PACKAGE_ROOT + sep)) return
+    if (!/\.(btsx|css)$/.test(file) || file.startsWith(PACKAGE_ROOT + sep) || !file.startsWith(root + sep) ||
+      relative(root, file).split(sep).some((part) => ['node_modules', '.git', 'dist', 'build', 'coverage'].includes(part))) return
     project.invalidate(file)
     pending.add(toPosix(relative(root, file)))
     timer ??= setTimeout(flush, NOTIFY_DELAY_MS)
@@ -122,6 +123,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         }
         const settings = readSettings((name) => url.searchParams.get(name), defaults)
         if (url.pathname === '/project') return send(200, selected.project.report(settings))
+        if (url.pathname === '/stylesheets') return send(200, selected.project.stylesheets())
         if (url.pathname === '/element-text-source') {
           const line = Number(url.searchParams.get('line'))
           const column = Number(url.searchParams.get('column'))
@@ -169,7 +171,7 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         const id = randomUUID()
         const opened = new BeastProject({ root: folder, include: ['.'], exclude: [PACKAGE_ROOT] })
         const watcher = watch(folder, { recursive: true }, (_event, name) => {
-          if (typeof name !== 'string' || !name.endsWith('.btsx') || name.split(sep).includes('node_modules')) return
+          if (typeof name !== 'string' || !/\.(btsx|css)$/.test(name) || name.split(sep).includes('node_modules')) return
           opened.invalidate(resolve(folder, name))
           pending.add(toPosix(name))
           timer ??= setTimeout(flush, NOTIFY_DELAY_MS)
@@ -213,6 +215,14 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
         if (typeof body.code !== 'string' || typeof body.host !== 'string' || typeof body.kind !== 'string' || !Number.isSafeInteger(body.line) || Number(body.line) < 1) return send(422, { error: 'Invalid code block edit.' })
         return send(200, selected.project.editBlock({ path: String(body.path ?? ''), hash: String(body.hash ?? ''), host: body.host, kind: body.kind, line: Number(body.line), code: body.code }))
       }
+      if (url.pathname === '/css-rule-edit') {
+        if (typeof body.path !== 'string' || typeof body.hash !== 'string' || typeof body.selector !== 'string' || !body.selector.trim() ||
+          !Number.isSafeInteger(body.index) || Number(body.index) < 0 || !body.declarations || typeof body.declarations !== 'object' || Array.isArray(body.declarations) ||
+          Object.values(body.declarations).some((value) => value !== null && typeof value !== 'string')) return send(422, { error: 'Choose a valid CSS rule and declarations.' })
+        const result = selected.project.editCssRule({ path: body.path, hash: body.hash, index: Number(body.index), selector: body.selector, declarations: body.declarations as Record<string, string | null> })
+        if (selected.root === root) notify(resolve(root, body.path))
+        return send(200, result)
+      }
       if (url.pathname === '/element-edit') {
         if (!['styles', 'attributes', 'properties'].includes(String(body.group)) ||
           !Number.isSafeInteger(body.line) || Number(body.line) < 1 || !Number.isSafeInteger(body.column) || Number(body.column) < 1 ||
@@ -248,19 +258,15 @@ export function createDevtoolsServer(options: DevtoolsServerOptions): DevtoolsSe
     middleware,
     notify,
     watch() {
-      for (const dir of include) {
-        const absolute = resolve(root, dir)
-        if (!existsSync(absolute)) continue
-        const watcher = watch(absolute, { recursive: true }, (_event, name) => {
-          if (typeof name === 'string') notify(resolve(absolute, name))
-        })
-        // Without the watcher the overlay still works; it just stops refreshing on save.
-        watcher.on('error', (error) => {
-          console.warn(`[beast-devtools] Stopped watching ${dir}: ${error.message}`)
-          watcher.close()
-        })
-        watchers.push(watcher)
-      }
+      const watcher = watch(root, { recursive: true }, (_event, name) => {
+        if (typeof name === 'string') notify(resolve(root, name))
+      })
+      // Without the watcher the overlay still works; it just stops refreshing on save.
+      watcher.on('error', (error) => {
+        console.warn(`[beast-devtools] Stopped watching ${root}: ${error.message}`)
+        watcher.close()
+      })
+      watchers.push(watcher)
     },
     close() {
       for (const watcher of watchers.splice(0)) watcher.close()

@@ -1,5 +1,6 @@
-import { fetchElementTextSource, fetchFile, saveElementEdit, undoRefactor } from './api.ts'
-import { DEFAULT_SETTINGS, type ElementEditRequest, type ElementStyleTarget, type ElementTextContext, type ElementTextSource, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
+import { fetchElementTextSource, fetchFile, fetchStylesheets, onSourceChanged, saveCssRule, saveElementEdit, undoRefactor } from './api.ts'
+import { DEFAULT_SETTINGS, type ElementEditRequest, type ElementStyleTarget, type ElementTextContext, type ElementTextSource, type StylesheetFile, COMPONENT_ATTRIBUTE, SOURCE_ATTRIBUTE } from '../shared/types.ts'
+import { inspectStylesheets, type InspectedCssRule } from './stylesheet-rules.ts'
 
 export type ElementPropertyGroup = 'styles' | 'attributes' | 'properties'
 export interface ElementProperty {
@@ -19,6 +20,7 @@ export interface StyleEdit {
 }
 export interface ElementSnapshot {
   label: string
+  classes?: string[]
   component: string | null
   source: string | null
   connected: boolean
@@ -28,6 +30,11 @@ export interface ElementSnapshot {
   styles: ElementProperty[]
   properties: ElementProperty[]
   textSource?: ElementTextSource | null
+  cssFiles?: StylesheetFile[]
+  cssRules?: InspectedCssRule[]
+  cssWarnings?: string[]
+  cssLoading?: boolean
+  cssError?: string | null
 }
 
 const EDITABLE_PROPERTIES = new Set([
@@ -106,7 +113,7 @@ export function captureElement(element: Element): ElementSnapshot {
     } catch { return { name, value: '[Unavailable]', editable: false } }
   })
   return {
-    label: elementLabel(element), component: element.getAttribute(COMPONENT_ATTRIBUTE), source: element.getAttribute(SOURCE_ATTRIBUTE),
+    label: elementLabel(element), classes: Array.from(element.classList), component: element.getAttribute(COMPONENT_ATTRIBUTE), source: element.getAttribute(SOURCE_ATTRIBUTE),
     connected: element.isConnected, width: rect.width, height: rect.height,
     attributes: attributes.sort((a, b) => a.name.localeCompare(b.name)), styles: styles.sort((a, b) => a.name.localeCompare(b.name)), properties,
   }
@@ -128,11 +135,24 @@ export class ElementInspection {
   #textSource: ElementTextSource | null = null
   cssPath = ''
   cssSelector = ''
+  #cssFiles: StylesheetFile[] = []
+  #cssLoading = true
+  #cssError: string | null = null
+  #stopStylesheetEvents: (() => void) | null = null
+  #cssGeneration = 0
+  #cssTarget: InspectedCssRule['source'] = null
   saving = false
   error: string | null = null
   subscribe(listener: () => void): () => void {
     this.#listeners.add(listener)
-    return () => { this.#listeners.delete(listener) }
+    if (!this.#stopStylesheetEvents) {
+      this.#stopStylesheetEvents = onSourceChanged((path) => { if (path.endsWith('.css')) void this.refreshStylesheets() })
+      void this.refreshStylesheets()
+    }
+    return () => {
+      this.#listeners.delete(listener)
+      if (!this.#listeners.size) { this.#stopStylesheetEvents?.(); this.#stopStylesheetEvents = null }
+    }
   }
   #notify(): void { for (const listener of this.#listeners) listener() }
   get element(): Element {
@@ -153,6 +173,59 @@ export class ElementInspection {
       this.#notify()
     }) : Promise.resolve()
   }
+  async refreshStylesheets(): Promise<void> {
+    const generation = ++this.#cssGeneration
+    try {
+      const { files } = await fetchStylesheets()
+      if (generation !== this.#cssGeneration) return
+      this.#cssFiles = files
+      this.#cssError = null
+      this.#updateCssTarget()
+    } catch (error) {
+      if (generation !== this.#cssGeneration) return
+      this.#cssError = error instanceof Error ? error.message : String(error)
+    } finally {
+      if (generation === this.#cssGeneration) { this.#cssLoading = false; this.#notify() }
+    }
+  }
+  #updateCssTarget(): void {
+    if (!this.#cssTarget) return
+    const file = this.#cssFiles.find((file) => file.path === this.#cssTarget!.path)
+    const rule = file?.rules.find((rule) => rule.index === this.#cssTarget!.index && rule.selector === this.cssSelector)
+    this.#cssTarget = file && rule ? { path: file.path, hash: file.hash, index: rule.index, line: rule.line, column: rule.column } : null
+  }
+  useCssRule(rule: InspectedCssRule): void {
+    if (!rule.source) return
+    this.#cssTarget = rule.source
+    this.cssPath = rule.source.path
+    this.cssSelector = rule.selector
+    this.styleTarget = 'css'
+    this.#notify()
+  }
+  async #saveCssRule(source: NonNullable<InspectedCssRule['source']>, selector: string, declarations: Record<string, string | null>): Promise<void> {
+    await this.#ready
+    const result = await saveCssRule({ path: source.path, hash: source.hash, index: source.index, selector, declarations })
+    ++this.#cssGeneration // A refresh started before this write must not restore stale declarations.
+    this.#cssFiles = this.#cssFiles.map((file) => file.path === result.file.path ? result.file : file)
+    this.#updateCssTarget()
+    this.#saved.push({ id: result.undoId, hash: this.#hash })
+    if (this.#saved.length > MAX_UNDO_STEPS) this.#saved.shift()
+    if (this.#undo.length > MAX_UNDO_STEPS) this.#undo.shift()
+  }
+  async editCssRule(rule: InspectedCssRule, name: string, value: string | null): Promise<void> {
+    if (this.saving) throw new Error('Wait for the current edit to finish saving.')
+    if (!rule.source) throw new Error('This loaded rule has no unambiguous project CSS source.')
+    this.saving = true
+    this.error = null
+    this.#notify()
+    try {
+      await this.#saveCssRule(rule.source, rule.selector, { [name]: value })
+      this.#pushUndo(() => {})
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error)
+      throw error
+    } finally { this.saving = false; this.#notify() }
+  }
   #location(): { path: string; line: number; column: number } | null {
     const match = /^(.+):(\d+):(\d+)$/.exec(this.#source ?? '')
     return match ? { path: match[1]!, line: Number(match[2]), column: Number(match[3]) } : null
@@ -172,6 +245,10 @@ export class ElementInspection {
     this.#notify()
   }
   async #save(change: Pick<ElementEditRequest, 'group' | 'name' | 'value' | 'declarations' | 'cssText' | 'textContext'>): Promise<void> {
+    if (change.group === 'styles' && this.styleTarget === 'css' && this.#cssTarget && this.#cssTarget.path === this.cssPath) {
+      await this.#saveCssRule(this.#cssTarget, this.cssSelector, change.declarations ?? {})
+      return
+    }
     await this.#ready
     const location = this.#location()
     if (!location || !this.#hash) throw new Error(this.error ?? 'The source file could not be loaded. Pick the element again.')
@@ -218,10 +295,11 @@ export class ElementInspection {
   get undoCount(): number { return this.#saved.length }
   capture(): ElementSnapshot {
     const snapshot = captureElement(this.element)
+    const stylesheets = inspectStylesheets(this.element, this.#cssFiles)
     if (this.#textSource?.kind === 'imported' || this.#textSource?.kind === 'unsupported') {
       snapshot.properties = snapshot.properties.map((property) => TEXT_PROPERTIES.has(property.name) ? { ...property, editable: false } : property)
     }
-    return { ...snapshot, textSource: this.#textSource }
+    return { ...snapshot, textSource: this.#textSource, cssFiles: this.#cssFiles, cssRules: stylesheets.rules, cssWarnings: stylesheets.warnings, cssLoading: this.#cssLoading, cssError: this.#cssError }
   }
 
   #pushUndo(step: () => void): void {
@@ -312,7 +390,7 @@ export class ElementInspection {
   }
 
   async undo(): Promise<void> {
-    this.#check()
+    if (this.saving) throw new Error('Wait for the current edit to finish saving.')
     const saved = this.#saved.at(-1)
     if (!saved) return
     this.saving = true
@@ -323,6 +401,7 @@ export class ElementInspection {
       this.#hash = saved.hash
       this.#saved.pop()
       this.#undo.pop()?.()
+      await this.refreshStylesheets()
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error)
       throw error

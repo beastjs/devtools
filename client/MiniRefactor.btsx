@@ -3,7 +3,7 @@ import type { AnalyzerSettings, ApplyResult, RefactorSuggestion, SourceBlockRepo
 import { applyRefactor, fetchSelection } from './api.ts'
 import { mappingTitle, miniSuggestions, nameIssue } from './refactor-actions.ts'
 
-props { report, line, settings, disabled, canApply, onBusyChange, onApplied }: { report: SourceBlockReport; line: number; settings: AnalyzerSettings; disabled: boolean; canApply?: (hash: string) => boolean; onBusyChange: (busy: boolean) => void; onApplied: (result: ApplyResult) => void | Promise<void> }
+props { report, line, settings, disabled, projectId = '', canApply, onBusyChange, onApplied }: { report: SourceBlockReport; line: number; settings: AnalyzerSettings; disabled: boolean; projectId?: string; canApply?: (hash: string) => boolean; onBusyChange: (busy: boolean) => void; onApplied: (result: ApplyResult) => void | Promise<void> }
 setup
   const [name, setName] = useState('');
   const [suggestions, setSuggestions] = useState<RefactorSuggestion[]>([]);
@@ -21,7 +21,7 @@ setup
     setError(null);
     if (disabled) { setLoading(false); return; }
     setLoading(true);
-    void fetchSelection(report.path, line, settings).then((selection) => {
+    void fetchSelection(report.path, line, settings, projectId).then((selection) => {
       if (request !== requestId.current) return;
       if (selection.hash !== report.hash) throw new Error('Source changed. Reload before refactoring.');
       const candidates = (selection.analysis?.suggestions ?? []).filter((suggestion) => suggestion.host === report.block.host);
@@ -31,7 +31,7 @@ setup
     }).catch((error) => { if (request === requestId.current) setError(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (request === requestId.current) setLoading(false); });
     return () => { requestId.current += 1; };
-  }, [report.path, report.hash, line, settings, disabled]);
+  }, [report.path, report.hash, line, settings, disabled, projectId]);
   const { extract, mapping } = miniSuggestions(suggestions, line);
   const componentIssue = extract === null ? 'Choose the first line of a template block' : extract.autoApply.blocked ?? nameIssue(extract, name);
   const mapIssue = mapping === null ? null : nameIssue(mapping, mappingTitle(name));
@@ -45,7 +45,7 @@ setup
     setError(null);
     onBusyChange(true);
     try {
-      const result = await applyRefactor({ path: report.path, hash: report.hash, settings, suggestionId: suggestion.id, target: action === 'create' ? 'file' : 'inline', name: title, dryRun: false });
+      const result = await applyRefactor({ path: report.path, hash: report.hash, settings, suggestionId: suggestion.id, target: action === 'create' ? 'file' : 'inline', name: title, dryRun: false }, projectId);
       await onApplied(result);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));

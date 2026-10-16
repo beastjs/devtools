@@ -1,0 +1,58 @@
+import { useEffect, useId, useState } from 'octane'
+import type { ElementProperty } from './element-inspector.ts'
+import SquishSwitch from '../components/squishy.btsx'
+import ScrubField from '../components/scrub-field.btsx'
+import { numericStyle } from './style-controls.ts'
+
+module
+  interface ElementPropertyRowProps {
+    property: ElementProperty
+    disabled: boolean
+    removable: boolean
+    styleControl?: boolean
+    originalValue?: string
+    onCommit: (name: string, value: string | null) => void
+  }
+
+props { property, disabled, removable, onCommit, styleControl = false, originalValue = property.value }: ElementPropertyRowProps
+setup
+  const inputId = useId();
+  const [draft, setDraft] = useState(property.value);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { if (!editing) setDraft(property.value); }, [property.value, editing]);
+  const commit = () => {
+    setEditing(false);
+    if (draft !== property.value) onCommit(property.name, draft);
+  };
+  const numeric = styleControl ? numericStyle(property) : null;
+  const original = styleControl ? numericStyle({ ...property, value: originalValue }) : null;
+  const on = property.value === 'true';
+.bdt-element-property
+  if property.type === 'boolean'
+    fragment
+      label.bdt-element-property-name(htmlFor={inputId} title={property.name}) #{property.name}
+      SquishSwitch(id={inputId} checked={on} disabled={disabled || !property.editable} ariaLabel={property.name} width={28} height={18}  onChange={(next) => onCommit(property.name, String(next))})
+  elseif numeric !== null && property.editable
+    ScrubField.bdt-scrub-delta(label={property.name} value={numeric.value} defaultValue={original?.value ?? numeric.value} suffix={numeric.unit} min={(original?.value ?? numeric.value)/2} max={numeric.max} step={numeric.step} size="md" showDelta showDirty={true} fineMultiplier={0.1} coarseMultiplier={2} sensitivity={2} showFill={true} fillMin={original?.fillMin ?? numeric.fillMin} fillMax={original?.fillMax ?? numeric.fillMax} chipColor="var(--bdt-bg-4)" accent="var(--bdt-scrub-accent)" onCommit={(next) => onCommit(property.name, `${next}${numeric.unit}${numeric.important}`)} disabled={disabled} className="bdt-style-scrub")
+  elseif property.editable
+    .bdt-element-property-field
+      label.bdt-element-property-name(htmlFor={inputId} title={property.name}) #{property.name}
+      input.bdt-input.bdt-element-property-value(
+        ~ id={inputId}
+        ~ aria-label={property.name}
+        ~ value={draft}
+        ~ disabled={disabled}
+        ~ spellcheck="false"
+        ~ onFocus={() => setEditing(true)}
+        ~ onInput={(event) => setDraft(event.currentTarget.value)}
+        ~ onBlur={commit}
+        ~ onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(property.value); setEditing(false); } }}
+        ~ )
+  else
+    fragment
+      span.bdt-element-property-name(title={property.name}) #{property.name}
+      span.bdt-element-property-readonly(title={property.value}) #{property.value.length > 240 ? property.value.slice(0, 240) + '…' : property.value}
+  if removable && property.editable
+    button.bdt-icon-button(type="button" disabled={disabled} title={`Remove ${property.name}`} aria-label={`Remove ${property.name}`} onClick={() => onCommit(property.name, null)}) ×
+  elseif property.inline
+    span.bdt-element-inline(title="Inline override") edited

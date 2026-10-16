@@ -228,12 +228,16 @@
 /* Launcher and dock                                                          */
 
 .bdt-launcher-host {
+  --bdt-launcher-origin-x: 100%;
+  --bdt-launcher-origin-y: 100%;
+  --bdt-launcher-hide-y: 14px;
   right: 16px;
   bottom: 16px;
+  width: max-content;
   display: flex;
   align-items: center;
   gap: 8px;
-  transform-origin: 100% 100%;
+  transform-origin: var(--bdt-launcher-origin-x) var(--bdt-launcher-origin-y);
   /* Waits for the dock to start sliding away before it comes back. */
   transition:
     transform 420ms var(--bdt-ease-out) 120ms,
@@ -241,8 +245,29 @@
     visibility 0s;
 }
 
+.bdt-launcher-host[data-position^='top-'] {
+  top: 16px;
+  bottom: auto;
+  --bdt-launcher-origin-y: 0%;
+  --bdt-launcher-hide-y: -14px;
+}
+
+.bdt-launcher-host[data-position$='-left'] {
+  left: 16px;
+  right: auto;
+  --bdt-launcher-origin-x: 0%;
+}
+
+.bdt-launcher-host[data-position$='-center'] {
+  left: 50%;
+  right: auto;
+  /* Keep centering independent of the show/hide transform. */
+  translate: -50% 0;
+  --bdt-launcher-origin-x: 50%;
+}
+
 .bdt-launcher-host.is-hidden {
-  transform: translateY(14px) scale(0.9);
+  transform: translateY(var(--bdt-launcher-hide-y)) scale(0.9);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -458,6 +483,19 @@
   flex: 1;
 }
 
+.bdt-trigger-position {
+  flex: none;
+}
+
+.bdt-trigger-position select {
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.bdt-root[data-theme='light'] .bdt-trigger-position select {
+  color-scheme: light;
+}
+
 .bdt-status {
   display: inline-flex;
   align-items: center;
@@ -641,6 +679,36 @@ html.bdt-resizing * {
   flex: 1;
   width: 0;
   min-width: 0;
+}
+
+.bdt-project-components > .bdt-component-search {
+  flex: none;
+  padding: 8px;
+}
+.bdt-project-component {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--bdt-line);
+}
+.bdt-project-component:hover,
+.bdt-project-component.is-active {
+  background: var(--bdt-bg-3);
+}
+.bdt-project-component-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bdt-project-component > .bdt-mono {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
 }
 
 .bdt-component-search-toggle {
@@ -1996,6 +2064,10 @@ html.bdt-resizing * {
 /* Narrow viewports                                                           */
 
 @media (max-width: 760px) {
+  .bdt-trigger-position > span {
+    display: none;
+  }
+
   .bdt-body {
     flex-direction: column;
   }
@@ -2633,6 +2705,70 @@ html.bdt-layout-dragging:is([data-bdt-layout-edge='top'], [data-bdt-layout-edge=
   min-width: 0;
   gap: 10px;
   font-size: 16px;
+}
+.bdt-element-classes {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--bdt-muted);
+  font: 11px var(--bdt-mono);
+}
+.bdt-stylesheets-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 16px;
+}
+.bdt-stylesheets-panel > .bdt-element-note {
+  padding: 4px 18px;
+}
+.bdt-css-rule {
+  margin: 12px 18px;
+  border: 1px solid var(--bdt-line-2);
+  border-radius: 8px;
+  background: var(--bdt-bg);
+}
+.bdt-css-rule-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--bdt-line);
+  overflow-wrap: anywhere;
+}
+.bdt-css-selector {
+  font: 12px var(--bdt-mono);
+  color: var(--bdt-accent);
+}
+.bdt-css-context {
+  font-family: var(--bdt-mono);
+}
+.bdt-css-declarations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 4px 20px;
+  padding: 8px 12px;
+}
+.bdt-css-declarations .bdt-element-property {
+  min-width: 0;
+}
+.bdt-css-declarations :is(.bdt-element-property-field, .bdt-style-scrub) {
+  grid-column: 1 / -2;
+}
+.bdt-css-declarations .bdt-element-property-field > .bdt-element-property-name {
+  flex-basis: 35%;
+  max-width: 190px;
+}
+.bdt-css-rule .bdt-element-add {
+  flex-wrap: wrap;
+  padding: 8px 12px;
+}
+.bdt-stylesheets-panel select {
+  min-width: 0;
+  max-width: 100%;
 }
 .bdt-element-identity strong {
   gap: 10px;

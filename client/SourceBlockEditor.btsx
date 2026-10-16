@@ -19,12 +19,12 @@ module
     undoKind: 'edit' | 'refactor' | null
   }
   const empty = (): EditorState => ({ report: null, draft: '', loading: false, saving: false, stale: false, error: null, undoId: null, undoKind: null })
-  const identity = (selection: SourceBlockSelection | null) => selection === null ? '' : `${selection.path}:${selection.host}:${selection.line}:${selection.kind}`
+  const identity = (projectId: string, selection: SourceBlockSelection | null) => `${projectId}:` + (selection === null ? '' : `${selection.path}:${selection.host}:${selection.line}:${selection.kind}`)
   const message = (error: unknown) => error instanceof Error ? error.message : String(error)
 
-props { selection, settings = DEFAULT_SETTINGS, sourceRevision = 0, onSelectionChange, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; settings?: AnalyzerSettings; sourceRevision?: number; onSelectionChange?: (selection: SourceBlockSelection) => void; selectionMessage?: string }
+props { selection, projectId = '', settings = DEFAULT_SETTINGS, sourceRevision = 0, onSelectionChange, selectionMessage = 'Select a source-backed block to edit its code.' }: { selection: SourceBlockSelection | null; projectId?: string; settings?: AnalyzerSettings; sourceRevision?: number; onSelectionChange?: (selection: SourceBlockSelection) => void; selectionMessage?: string }
 setup
-  const key = identity(selection);
+  const key = identity(projectId, selection);
   const active = useRef(key);
   active.current = key;
   const drafts = useRef(new Map<string, EditorState>());
@@ -42,7 +42,7 @@ setup
   const completeReport = async (report: SourceBlockReport) => {
     if (report.block.kind !== 'component' || report.block.templateLine !== undefined) return report;
     try {
-      const file = await fetchFile(report.path, settings);
+      const file = await fetchFile(report.path, settings, projectId);
       if (file.hash === report.hash) return { ...report, block: { ...report.block, templateLine: templateLine(file, report.block) } };
     } catch { /* Source loading and saving still work if optional analysis is unavailable. */ }
     return report;
@@ -50,7 +50,7 @@ setup
   const load = async (id: string, target: SourceBlockSelection) => {
     update(id, (previous) => ({ ...previous, loading: true, error: null }));
     try {
-      const report = await completeReport(await fetchSourceBlock(target));
+      const report = await completeReport(await fetchSourceBlock(target, projectId));
       update(id, (previous) => ({ ...previous, report, draft: report.code, loading: false, stale: false, error: null }));
     } catch (error) {
       update(id, (previous) => ({ ...previous, loading: false, error: message(error) }));
@@ -73,14 +73,14 @@ setup
   }, [sourceRevision]);
   useEffect(() => onSourceChanged((path) => {
     for (const [id, cached] of drafts.current) {
-      if (cached.report?.path !== path) continue;
+      if (!id.startsWith(`${projectId}:`) || cached.report?.path !== path) continue;
       const { report } = cached;
-      void fetchSourceBlock({ path, host: report.block.host, line: report.block.startLine, kind: report.block.kind }).then((next) => {
+      void fetchSourceBlock({ path, host: report.block.host, line: report.block.startLine, kind: report.block.kind }, projectId).then((next) => {
         const current = drafts.current.get(id);
         if (current?.report?.hash === report.hash && current.report.hash !== next.hash) update(id, (previous) => ({ ...previous, stale: true }));
       }, () => { if (drafts.current.get(id)?.report?.hash === report.hash) update(id, (previous) => ({ ...previous, stale: true })); });
     }
-  }), []);
+  }), [projectId]);
   const dirty = state.report !== null && state.draft !== state.report.code;
   const refactorLine = refactorTarget?.key === key && refactorTarget.hash === state.report?.hash ? refactorTarget.line : state.report?.block.templateLine ?? state.report?.block.startLine ?? 1;
   const selectRefactorLine = (line: number) => {
@@ -93,14 +93,14 @@ setup
   };
   const refreshOwner = async (id: string, previous: SourceBlockReport) => {
     // Hoisting can insert declarations above the owner; mapping can remove the selected block.
-    const project = await fetchProject(settings);
+    const project = await fetchProject(settings, projectId);
     const owner = project.components.find((component) => component.path === previous.path && component.name === previous.block.host);
     if (!owner) throw new Error('The refactor was applied. Select the component again to reload its source.');
     const target = { path: previous.path, host: previous.block.host, line: owner.blocks?.find((block) => block.kind === 'component' && block.scope === owner.name)?.startLine ?? (owner.local ? owner.line : 1), kind: 'component' };
-    const report = await completeReport(await fetchSourceBlock(target));
+    const report = await completeReport(await fetchSourceBlock(target, projectId));
     update(id, (current) => ({ ...current, report, draft: report.code, stale: false, loading: false, saving: false, error: null }));
     if (onSelectionChange && active.current === id) {
-      const nextKey = identity(target);
+      const nextKey = identity(projectId, target);
       drafts.current.set(nextKey, drafts.current.get(id)!);
       if (nextKey !== id) drafts.current.delete(id);
       onSelectionChange(target);
@@ -127,7 +127,7 @@ setup
     if (code === report.code) return;
     update(id, (previous) => ({ ...previous, draft: code, saving: true, error: null }));
     try {
-      const saved = await saveBlockEdit({ path: report.path, host: report.block.host, line: report.block.startLine, kind: report.block.kind, hash: report.hash, code });
+      const saved = await saveBlockEdit({ path: report.path, host: report.block.host, line: report.block.startLine, kind: report.block.kind, hash: report.hash, code }, projectId);
       const next = await completeReport(saved);
       update(id, (previous) => ({ ...previous, report: next, draft: next.code, saving: false, stale: false, undoId: saved.undoId, undoKind: 'edit' }));
     } catch (error) {
@@ -144,7 +144,7 @@ setup
     const id = key;
     update(id, (previous) => ({ ...previous, saving: true, error: null }));
     try {
-      await undoRefactor(current.undoId);
+      await undoRefactor(current.undoId, projectId);
       update(id, (previous) => ({ ...previous, saving: false, undoId: null, undoKind: null }));
       if (current.undoKind === 'refactor' && current.report) await refreshOwner(id, current.report);
       else if (selection) await load(id, selection);
@@ -170,7 +170,7 @@ section.bdt-block-editor(aria-label="Selected source block" aria-busy={state.loa
         button.bdt-button(type="button" disabled={!dirty || state.saving || state.stale || refactoring} onClick={() => save()}) #{state.saving ? 'Saving…' : 'Save'}
         button.bdt-button(type="button" disabled={!state.undoId || state.saving || dirty || refactoring} onClick={undo}) Undo
         button.bdt-button(type="button" disabled={state.saving || refactoring} onClick={reload} title="Reload source and discard this draft") #{dirty ? 'Discard' : 'Reload'}
-      MiniRefactor(report={state.report} line={refactorLine} settings={settings} disabled={dirty || state.stale || state.saving} canApply={canRefactor} onBusyChange={changeRefactorBusy} onApplied={refactored})
+      MiniRefactor(projectId={projectId} report={state.report} line={refactorLine} settings={settings} disabled={dirty || state.stale || state.saving} canApply={canRefactor} onBusyChange={changeRefactorBusy} onApplied={refactored})
       if state.stale
         p.bdt-editor-error(role="status") Source changed on disk. Your draft is kept; reload before saving.
       CodeView(source={state.draft} language="btsx" label="Edit source block" firstLineNumber={state.report.block.startLine} documentKey={key} onSourceChange={changeDraft} onBlur={normalize} onSave={save} vim={vim} disabled={state.saving || refactoring} onLineClick={selectRefactorLine} activeLine={refactorLine} classControls={true})

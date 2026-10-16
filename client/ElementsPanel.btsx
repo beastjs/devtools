@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'octane'
+import { useEffect, useRef, useState } from 'octane'
 import { groupAttributes, groupProperties, groupStyles, type ElementSection } from './element-groups.ts'
-import { COMMON_STYLES, snapshotKey, type ElementInspection, type ElementProperty, type ElementPropertyGroup } from './element-inspector.ts'
+import { COMMON_STYLES, snapshotKey, type ElementInspection, type ElementPropertyGroup } from './element-inspector.ts'
 import SquishSwitch from '../components/squishy.btsx'
-import ScrubField from '../components/scrub-field.btsx'
-import { numericStyle } from './style-controls.ts'
+import ElementPropertyRow from './ElementPropertyRow.btsx'
+import StylesheetsPanel from './StylesheetsPanel.btsx'
 import type { ElementStyleTarget } from '../shared/types.ts'
 import { cx } from './util.ts'
 import { openInEditor } from './api.ts'
@@ -13,63 +13,13 @@ module
     inspection: ElementInspection | null
     onPick: () => void
   }
-  interface ElementPropertyRowProps {
-    property: ElementProperty
-    disabled: boolean
-    removable: boolean
-    styleControl?: boolean
-    originalValue?: string
-    onCommit: (name: string, value: string | null) => void
-  }
-  const GROUPS: ReadonlyArray<{ id: ElementPropertyGroup; label: string }> = [
-    { id: 'styles', label: 'Styles' },
+  type ElementPanelGroup = ElementPropertyGroup | 'stylesheets'
+  const GROUPS: ReadonlyArray<{ id: ElementPanelGroup; label: string }> = [
+    { id: 'stylesheets', label: 'Stylesheet rules' },
+    { id: 'styles', label: 'Computed styles' },
     { id: 'attributes', label: 'Attributes' },
     { id: 'properties', label: 'DOM properties' },
   ]
-
-component ElementPropertyRow
-  props { property, disabled, removable, onCommit, styleControl = false, originalValue = property.value }: ElementPropertyRowProps
-  setup
-    const inputId = useId();
-    const [draft, setDraft] = useState(property.value);
-    const [editing, setEditing] = useState(false);
-    useEffect(() => { if (!editing) setDraft(property.value); }, [property.value, editing]);
-    const commit = () => {
-      setEditing(false);
-      if (draft !== property.value) onCommit(property.name, draft);
-    };
-    const numeric = styleControl ? numericStyle(property) : null;
-    const original = styleControl ? numericStyle({ ...property, value: originalValue }) : null;
-    const on = property.value === 'true';
-  .bdt-element-property
-    if property.type === 'boolean'
-      fragment
-        label.bdt-element-property-name(htmlFor={inputId} title={property.name}) #{property.name}
-        SquishSwitch(id={inputId} checked={on} disabled={disabled || !property.editable} ariaLabel={property.name} width={28} height={18}  onChange={(next) => onCommit(property.name, String(next))})
-    elseif numeric !== null && property.editable
-      ScrubField.bdt-scrub-delta(label={property.name} value={numeric.value} defaultValue={original?.value ?? numeric.value} suffix={numeric.unit} min={(original?.value ?? numeric.value)/2} max={numeric.max} step={numeric.step} size="md" showDelta showDirty={true} fineMultiplier={0.1} coarseMultiplier={2} sensitivity={2} showFill={true} fillMin={original?.fillMin ?? numeric.fillMin} fillMax={original?.fillMax ?? numeric.fillMax} chipColor="var(--bdt-bg-4)" accent="var(--bdt-scrub-accent)" onCommit={(next) => onCommit(property.name, `${next}${numeric.unit}${numeric.important}`)} disabled={disabled} className="bdt-style-scrub")
-    elseif property.editable
-      .bdt-element-property-field
-        label.bdt-element-property-name(htmlFor={inputId} title={property.name}) #{property.name}
-        input.bdt-input.bdt-element-property-value(
-          ~ id={inputId}
-          ~ aria-label={property.name}
-          ~ value={draft}
-          ~ disabled={disabled}
-          ~ spellcheck="false"
-          ~ onFocus={() => setEditing(true)}
-          ~ onInput={(event) => setDraft(event.currentTarget.value)}
-          ~ onBlur={commit}
-          ~ onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(property.value); setEditing(false); } }}
-          ~ )
-    else
-      fragment
-        span.bdt-element-property-name(title={property.name}) #{property.name}
-        span.bdt-element-property-readonly(title={property.value}) #{property.value.length > 240 ? property.value.slice(0, 240) + '…' : property.value}
-    if removable && property.editable
-      button.bdt-icon-button(type="button" disabled={disabled} title={`Remove ${property.name}`} aria-label={`Remove ${property.name}`} onClick={() => onCommit(property.name, null)}) ×
-    elseif property.inline
-      span.bdt-element-inline(title="Inline override") edited
 
 props { inspection, onPick }: ElementsPanelProps
 setup
@@ -80,7 +30,7 @@ setup
   const [cssPath, setCssPath] = useState(inspection?.cssPath ?? '');
   const [cssSelector, setCssSelector] = useState(inspection?.cssSelector ?? '');
   const chooseStyleTarget = (target: ElementStyleTarget) => { setStyleTarget(target); if (inspection) inspection.styleTarget = target; };
-  const [group, setGroup] = useState<ElementPropertyGroup>('styles');
+  const [group, setGroup] = useState<ElementPanelGroup>('stylesheets');
   const [query, setQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -112,14 +62,14 @@ setup
     refresh();
     setError(inspection?.error ?? null);
     setQuery('');
-    if (inspection) { inspection.styleTarget = styleTarget; inspection.cssPath = cssPath; inspection.cssSelector = cssSelector; }
+    if (inspection) { setStyleTarget(inspection.styleTarget); setCssPath(inspection.cssPath); setCssSelector(inspection.cssSelector); }
     if (!inspection) return;
     // Attributes, layout and runtime values can change independently of DevTools.
     const timer = window.setInterval(() => { if (!document.hidden) refresh(); }, 1000);
     const unsubscribe = inspection.subscribe(() => { setError(inspection.error); refresh(); });
     return () => { window.clearInterval(timer); unsubscribe(); };
   }, [inspection]);
-  const edit = async (name: string, value: string | null, editGroup: ElementPropertyGroup = group) => {
+  const edit = async (name: string, value: string | null, editGroup: ElementPropertyGroup = group === 'stylesheets' ? 'styles' : group) => {
     if (!inspection) return;
     try {
       await inspection.edit(editGroup, name, value);
@@ -132,17 +82,17 @@ setup
     try { await inspection.undo(); setError(null); refresh(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };
-  const chooseGroup = (next: ElementPropertyGroup) => { setGroup(next); setQuery(''); setNewName(''); setNewValue(''); setError(null); };
+  const chooseGroup = (next: ElementPanelGroup) => { setGroup(next); setQuery(''); setNewName(''); setNewValue(''); setError(null); };
   const add = async (event: SubmitEvent) => {
     event.preventDefault();
     if (!inspection || !newName.trim()) return;
     try {
-      await inspection.edit(group, newName.trim(), newValue);
+      await inspection.edit(group === 'stylesheets' ? 'styles' : group, newName.trim(), newValue);
       setNewName(''); setNewValue(''); setError(null); refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
   };
   const search = query.trim().toLowerCase();
-  const rows = (snapshot?.[group] ?? []).filter((entry) => {
+  const rows = (group === 'stylesheets' ? [] : snapshot?.[group] ?? []).filter((entry) => {
     if (search) return entry.name.toLowerCase().includes(search) || entry.value.toLowerCase().includes(search);
     return group !== 'styles' || showAll || entry.inline || COMMON_STYLES.has(entry.name);
   });
@@ -165,6 +115,8 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
       .bdt-toolbar.bdt-element-toolbar
         .bdt-element-row
           strong.bdt-element-identity #{snapshot.label}
+          if snapshot.classes?.length
+            span.bdt-element-classes(title={snapshot.classes.join(' ')}) #{snapshot.classes.map((name) => '.' + name).join(' ')}
           span.bdt-mono.bdt-dim #{snapshot.component ? ' · ' + snapshot.component : ''}
           if textProperty !== undefined
             .bdt-element-text-editor
@@ -178,12 +130,12 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
                 ~ )
           span.bdt-mono.bdt-dim #{`${Number(snapshot.width.toFixed(1))} × ${Number(snapshot.height.toFixed(1))} px`}
         .bdt-spacer
-        span.bdt-element-live #{saving ? 'Saving…' : error ? 'Not saved' : group !== 'styles' ? 'Saves to source' : styleTarget === 'css' ? 'Saves to CSS file' : styleTarget === 'tailwind' ? 'Saves to className' : 'Saves to inline style'}
+        span.bdt-element-live #{saving ? 'Saving…' : error ? 'Not saved' : group === 'stylesheets' ? 'Saves to CSS rule' : group !== 'styles' ? 'Saves to source' : styleTarget === 'css' ? 'Saves to CSS file' : styleTarget === 'tailwind' ? 'Saves to className' : 'Saves to inline style'}
         button.bdt-button(type="button" disabled={saving || undoCount === 0} onClick={undo}) Undo#{undoCount > 0 ? ' · ' + undoCount : ''}
-        button.bdt-button(type="button" onClick={refresh}) Refresh
+        button.bdt-button(type="button" onClick={() => { refresh(); void inspection?.refreshStylesheets(); }}) Refresh
         button.bdt-button-critical(type="button" onClick={onPick}) Pick another
       if !snapshot.source
-        p.bdt-element-notice(role="status") This element has no Beast source location. Enable source tagging to save edits.
+        p.bdt-element-notice(role="status") This element has no Beast source location. Enable source tagging to save attributes, DOM properties and inline styles. Project CSS rules can still be edited.
       if !snapshot.connected
         p.bdt-element-notice(role="status") This element was removed from the page. Pick it again to continue editing.
       if snapshot.textSource?.kind === 'array'
@@ -200,54 +152,58 @@ section.bdt-pane.bdt-elements-panel(aria-label="Selected element")
           each item in GROUPS key item.id
             button(type="button" className={cx('bdt-element-group', group === item.id && 'is-active')} aria-pressed={group === item.id} onClick={() => chooseGroup(item.id)})
               span #{item.label}
-              span.bdt-dim #{snapshot[item.id].length}
+              span.bdt-dim #{item.id === 'stylesheets' ? snapshot.cssRules?.length ?? 0 : snapshot[item.id].length}
           p.bdt-element-note Style edits and layout drags save to the selected destination. CSS rule edits affect every matching element; inline and Tailwind edits affect every instance rendered by this source element.
         .bdt-element-content
-          if group === 'styles'
+          if group === 'stylesheets'
+            StylesheetsPanel(inspection={inspection!} snapshot={snapshot} disabled={saving || !snapshot.connected} onRefresh={refresh} onUseRule={(rule) => { inspection?.useCssRule(rule); setStyleTarget('css'); setCssPath(rule.source!.path); setCssSelector(rule.selector); }})
+          else
             fragment
-              .bdt-element-filter
-                label.bdt-dim(htmlFor="bdt-style-target") Save styles to
-                select.bdt-input(id="bdt-style-target" value={styleTarget} disabled={saving} onChange={(event) => chooseStyleTarget(event.currentTarget.value as ElementStyleTarget)})
-                  option(value="tailwind") Tailwind className
-                  option(value="inline") Inline style
-                  option(value="css") CSS file
-              if styleTarget === 'css'
+              if group === 'styles'
                 fragment
                   .bdt-element-filter
-                    input.bdt-input(aria-label="CSS file path" placeholder="src/styles.css" value={cssPath} disabled={saving} onInput={(event) => { setCssPath(event.currentTarget.value); if (inspection) inspection.cssPath = event.currentTarget.value; }})
-                    input.bdt-input(aria-label="CSS rule selector" placeholder=".card" value={cssSelector} disabled={saving} onInput={(event) => { setCssSelector(event.currentTarget.value); if (inspection) inspection.cssSelector = event.currentTarget.value; }})
-                  p.bdt-element-note Enter a project CSS file and an existing, unique selector. Its declarations are replaced in place.
-              elseif styleTarget === 'tailwind'
-                p.bdt-element-note Replaces base utilities with Tailwind arbitrary value classes. Responsive and state variants stay in place.
-          .bdt-element-filter
-            input.bdt-input(type="search" aria-label="Filter element properties" placeholder="Find a property or value…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
-            if group === 'styles'
-              SquishSwitch(checked={showAll} onChange={setShowAll} label="All computed styles" width={28} height={18} trackColor="var(--bdt-bg-4)" trackOnColor="var(--bdt-ok)" thumbColor="var(--bdt-line-2)" thumbOnColor="#fafafa")
-            span.bdt-dim.bdt-prop-count #{rows.length}
-            span.bdt-dim properties
-          .bdt-element-properties
-            if rows.length === 0
-              p.bdt-element-note No matching properties.
-            div(className={cx(group === 'styles' && 'bdt-style-columns', group === 'properties' && 'bdt-property-columns')})
-              each category in sections key `${group}:${category.id}`
-                .bdt-element-section
-                  if category.label !== null
-                    button(
-                      ~ type="button"
-                      ~ className={cx('bdt-element-section-head', category.id === 'editable' && 'is-editable')}
-                      ~ aria-expanded={isOpen(category)}
-                      ~ disabled={search !== ''}
-                      ~ onClick={() => toggle(category)}
-                      ~ )
-                      span.bdt-element-section-chevron(aria-hidden="true") ›
-                      span #{category.label}
-                      span.bdt-dim #{category.properties.length}
-                  if isOpen(category)
-                    div(className={cx('bdt-element-grid', group !== 'properties' && category.columns === 2 && 'is-split')})
-                      each property in category.properties key `${group}:${property.name}`
-                        ElementPropertyRow(originalValue={savedSnapshot?.[group].find((entry) => entry.name === property.name)?.value} styleControl={group === 'styles'} property={property} disabled={saving || !snapshot.source || !snapshot.connected} removable={group === 'attributes' || (group === 'styles' && (!!property.inline || styleTarget !== 'inline'))} onCommit={edit})
-          if group !== 'properties'
-            form.bdt-element-add(onSubmit={add})
-              input.bdt-input(aria-label={group === 'styles' ? 'New CSS property' : 'New attribute'} placeholder={group === 'styles' ? 'CSS property' : 'Attribute name'} value={newName} disabled={saving || !snapshot.source || !snapshot.connected} onInput={(event) => setNewName(event.currentTarget.value)})
-              input.bdt-input(aria-label="New property value" placeholder="Value" value={newValue} disabled={saving || !snapshot.source || !snapshot.connected} onInput={(event) => setNewValue(event.currentTarget.value)})
-              button.bdt-button(type="submit" disabled={saving || !snapshot.source || !snapshot.connected || !newName.trim()}) Add
+                    label.bdt-dim(htmlFor="bdt-style-target") Save styles to
+                    select.bdt-input(id="bdt-style-target" value={styleTarget} disabled={saving} onChange={(event) => chooseStyleTarget(event.currentTarget.value as ElementStyleTarget)})
+                      option(value="tailwind") Tailwind className
+                      option(value="inline") Inline style
+                      option(value="css") CSS file
+                  if styleTarget === 'css'
+                    fragment
+                      .bdt-element-filter
+                        input.bdt-input(aria-label="CSS file path" placeholder="src/styles.css" value={cssPath} disabled={saving} onInput={(event) => { setCssPath(event.currentTarget.value); if (inspection) inspection.cssPath = event.currentTarget.value; }})
+                        input.bdt-input(aria-label="CSS rule selector" placeholder=".card" value={cssSelector} disabled={saving} onInput={(event) => { setCssSelector(event.currentTarget.value); if (inspection) inspection.cssSelector = event.currentTarget.value; }})
+                      p.bdt-element-note Enter a project CSS file and an existing, unique selector. Its declarations are replaced in place.
+                  elseif styleTarget === 'tailwind'
+                    p.bdt-element-note Replaces base utilities with Tailwind arbitrary value classes. Responsive and state variants stay in place.
+              .bdt-element-filter
+                input.bdt-input(type="search" aria-label="Filter element properties" placeholder="Find a property or value…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
+                if group === 'styles'
+                  SquishSwitch(checked={showAll} onChange={setShowAll} label="All computed styles" width={28} height={18} trackColor="var(--bdt-bg-4)" trackOnColor="var(--bdt-ok)" thumbColor="var(--bdt-line-2)" thumbOnColor="#fafafa")
+                span.bdt-dim.bdt-prop-count #{rows.length}
+                span.bdt-dim properties
+              .bdt-element-properties
+                if rows.length === 0
+                  p.bdt-element-note No matching properties.
+                div(className={cx(group === 'styles' && 'bdt-style-columns', group === 'properties' && 'bdt-property-columns')})
+                  each category in sections key `${group}:${category.id}`
+                    .bdt-element-section
+                      if category.label !== null
+                        button(
+                          ~ type="button"
+                          ~ className={cx('bdt-element-section-head', category.id === 'editable' && 'is-editable')}
+                          ~ aria-expanded={isOpen(category)}
+                          ~ disabled={search !== ''}
+                          ~ onClick={() => toggle(category)}
+                          ~ )
+                          span.bdt-element-section-chevron(aria-hidden="true") ›
+                          span #{category.label}
+                          span.bdt-dim #{category.properties.length}
+                      if isOpen(category)
+                        div(className={cx('bdt-element-grid', group !== 'properties' && category.columns === 2 && 'is-split')})
+                          each property in category.properties key `${group}:${property.name}`
+                            ElementPropertyRow(originalValue={savedSnapshot?.[group].find((entry) => entry.name === property.name)?.value} styleControl={group === 'styles'} property={property} disabled={saving || !snapshot.source || !snapshot.connected} removable={group === 'attributes' || (group === 'styles' && (!!property.inline || styleTarget !== 'inline'))} onCommit={edit})
+              if group !== 'properties'
+                form.bdt-element-add(onSubmit={add})
+                  input.bdt-input(aria-label={group === 'styles' ? 'New CSS property' : 'New attribute'} placeholder={group === 'styles' ? 'CSS property' : 'Attribute name'} value={newName} disabled={saving || !snapshot.source || !snapshot.connected} onInput={(event) => setNewName(event.currentTarget.value)})
+                  input.bdt-input(aria-label="New property value" placeholder="Value" value={newValue} disabled={saving || !snapshot.source || !snapshot.connected} onInput={(event) => setNewValue(event.currentTarget.value)})
+                  button.bdt-button(type="submit" disabled={saving || !snapshot.source || !snapshot.connected || !newName.trim()}) Add

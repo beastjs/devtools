@@ -3,13 +3,15 @@ import { BeastLogo, ComponentFinderIcon, ElementPickerIcon } from './Icons.btsx'
 import ProjectPicker from './ProjectPicker.btsx'
 import type { ElementTool } from './element-tools.ts'
 import type { RuntimeSnapshot } from './runtime.ts'
-import { cx, TABS, type TabId } from './util.ts'
+import { cx, TABS, TRIGGER_POSITIONS, type TabId, type TriggerPosition } from './util.ts'
 import { Icon} from "../packages/icons/src";
 
 module
   interface TopbarProps {
     theme: 'dark' | 'light'
     onToggleTheme: () => void
+    triggerPosition: TriggerPosition
+    onTriggerPositionChange: (position: TriggerPosition) => void
     tab: TabId
     setTab: (next: TabId | ((prev: TabId) => TabId)) => void
     suggestionCount: number
@@ -49,14 +51,19 @@ component MainTabs
         if item.id === 'refactor' && suggestionCount > 0
           span.bdt-tab-count.bdt-refactor-count(title={`${suggestionCount} refactor suggestion${suggestionCount === 1 ? '' : 's'}`}) #{suggestionCount}
 
-props { theme, onToggleTheme, tab, setTab, suggestionCount, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, project, projectId, selectProject, runtime, status, setOpen }: TopbarProps
+props { theme, onToggleTheme, triggerPosition, onTriggerPositionChange, tab, setTab, suggestionCount, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, project, projectId, selectProject, runtime, status, setOpen }: TopbarProps
 header.bdt-topbar
   .bdt-brand
     BeastLogo
     div(className="skew-2 font-semibold! text-text text-base!") Beast
     span.bdt-brand-sub Devtools
-  MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentCount={runtime.componentCount})
+  MainTabs(tab={tab} setTab={setTab} suggestionCount={suggestionCount} componentCount={projectId === '' ? runtime.componentCount : project?.components.length ?? 0})
   .bdt-spacer
+  label.bdt-field.bdt-trigger-position
+    span Triggers
+    select.bdt-input(aria-label="Trigger position" title="Trigger position" value={triggerPosition} onChange={(event) => onTriggerPositionChange(event.currentTarget.value as TriggerPosition)})
+      each position in TRIGGER_POSITIONS key position.id
+        option(value={position.id}) #{position.label}
   button.bdt-icon-button(type="button" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={onToggleTheme})
     if theme === 'dark'
       Icon(name="sun")

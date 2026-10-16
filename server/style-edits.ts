@@ -52,19 +52,23 @@ export function replaceStyleObject(code: string, declarations: Record<string, st
 }
 
 /** Edit an existing rule; refuse ambiguous selectors rather than modifying conditional rules. */
-export function replaceCssRule(source: string, selector: string, declarations: Record<string, string | null>): string {
+export function replaceCssRule(source: string, selector: string, declarations: Record<string, string | null>, index?: number): string {
   const root = postcss.parse(source)
   const matches: postcss.Rule[] = []
-  root.walkRules((rule) => { if (rule.selector === selector) matches.push(rule) })
+  let ruleIndex = 0
+  root.walkRules((rule) => { if (rule.selector === selector && (index === undefined || index === ruleIndex)) matches.push(rule); ruleIndex++ })
   if (matches.length !== 1) throw new RefactorError(matches.length ? 'This selector occurs more than once. Choose a unique CSS rule.' : 'No CSS rule matches this selector in the selected file.', 422)
   const rule = matches[0]!
   for (const [name, value] of Object.entries(declarations)) {
+    if (!/^--[\w-]+$|^[a-zA-Z][\w-]*$/.test(name)) throw new RefactorError('Invalid CSS property.', 422)
     const existing: postcss.Declaration[] = []
     rule.each((node) => { if (node.type === 'decl' && node.prop === name) existing.push(node) })
     if (value === null || !value.trim()) { existing.forEach((node) => node.remove()); continue }
     const important = /\s*!important\s*$/i.test(value)
     const next = value.replace(/\s*!important\s*$/i, '').trim()
-    const parsed = postcss.parse(`a { ${name}: ${next}${important ? ' !important' : ''}; }`)
+    let parsed: postcss.Root
+    try { parsed = postcss.parse(`a { ${name}: ${next}${important ? ' !important' : ''}; }`) }
+    catch { throw new RefactorError('Invalid CSS declaration.', 422) }
     const parsedRule = parsed.first
     if (parsed.nodes.length !== 1 || parsedRule?.type !== 'rule' || parsedRule.nodes.length !== 1 || parsedRule.first?.type !== 'decl' || parsedRule.first.prop !== name) throw new RefactorError('Invalid CSS declaration.', 422)
     const last = existing.pop()

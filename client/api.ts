@@ -46,7 +46,7 @@ export function undoRefactor(id: string, project = ''): Promise<UndoResult> {
   return post<UndoResult>('/undo', { id }, project)
 }
 
-/** Called with the project-relative path whenever a `.btsx` file changes on disk. */
+/** Called with the project-relative path whenever a `.btsx` or `.css` file changes on disk. */
 export function onSourceChanged(listener: (path: string) => void): () => void {
   // Server-sent events work the same under every dev server, unlike each bundler's HMR channel.
   const events = new EventSource(`${API_BASE}/events`)
@@ -92,19 +92,27 @@ export function saveElementEdit(request: import('../shared/types.ts').ElementEdi
   return post('/element-edit', request)
 }
 
+export function fetchStylesheets(): Promise<import('../shared/types.ts').StylesheetReport> {
+  return get('/stylesheets', {})
+}
+
+export function saveCssRule(request: import('../shared/types.ts').CssRuleEditRequest): Promise<import('../shared/types.ts').CssRuleEditResult> {
+  return post('/css-rule-edit', request)
+}
+
 export function fetchElementTextSource(request: import('../shared/types.ts').ElementTextRequest): Promise<import('../shared/types.ts').ElementTextSource> {
   const { textContext, ...location } = request
   return get('/element-text-source', { ...location, ...textContext })
 }
 
-export function fetchSourceBlock(selection: import('../shared/types.ts').SourceBlockSelection): Promise<import('../shared/types.ts').SourceBlockReport> {
-  return get('/source-block', { ...selection })
+export function fetchSourceBlock(selection: import('../shared/types.ts').SourceBlockSelection, project = ''): Promise<import('../shared/types.ts').SourceBlockReport> {
+  return get('/source-block', { ...selection, project })
 }
 
-export function saveBlockEdit(request: import('../shared/types.ts').BlockEditRequest): Promise<import('../shared/types.ts').BlockEditResult> {
-  return post('/block-edit', request)
+export function saveBlockEdit(request: import('../shared/types.ts').BlockEditRequest, project = ''): Promise<import('../shared/types.ts').BlockEditResult> {
+  return post('/block-edit', request, project)
 }
 
-export function optimizeComponentTailwind(request: import('../shared/types.ts').TailwindOptimizeRequest): Promise<import('../shared/types.ts').TailwindOptimizeResult> {
-  return post('/tailwind-optimize', request)
+export function optimizeComponentTailwind(request: import('../shared/types.ts').TailwindOptimizeRequest, project = ''): Promise<import('../shared/types.ts').TailwindOptimizeResult> {
+  return post('/tailwind-optimize', request, project)
 }

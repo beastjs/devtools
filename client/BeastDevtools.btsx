@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'octane'
 import type { AnalyzerSettings, ComponentLocation, FileReport, FileSummary, ProjectReport } from '../shared/types.ts'
 import { BeastLogo, ComponentFinderIcon, ElementPickerIcon } from './Icons.btsx'
 import ComponentsPanel from './ComponentsPanel.btsx'
+import ProjectComponentsPanel from './ProjectComponentsPanel.btsx'
 import ElementsPanel from './ElementsPanel.btsx'
 import { startLayoutEditor } from './element-layout.ts'
 import { ElementInspection } from './element-inspector.ts'
@@ -11,7 +12,7 @@ import Topbar from './Topbar.btsx'
 import { fetchFile, fetchProject, onSourceChanged, openInEditor } from './api.ts'
 import { listenForPickerEscape, startComponentFinder, startElementPicker, type ElementTool } from './element-tools.ts'
 import { getRuntimeSnapshot, subscribeRuntime } from './runtime.ts'
-import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, TABS, type RecentRefactor, type ScrollTarget, type TabId } from './util.ts'
+import { clampHeight, cx, loadPreferences, savePreferences, scrollTarget, startResize, TABS, type RecentRefactor, type ScrollTarget, type TabId, type TriggerPosition } from './util.ts'
 
 module
   const initial = loadPreferences()
@@ -45,6 +46,7 @@ module
 module
   interface DevtoolsInterfaceProps {
     theme: 'dark' | 'light'
+    triggerPosition: TriggerPosition
     open: boolean
     componentFinderActive: boolean
     componentFinderTitle: 'Stop Component Finder (Esc)' | 'Component Finder (Alt+Shift+C)'
@@ -55,8 +57,8 @@ module
   }
 
 component DevtoolsInterface
-  props { theme, open, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, setOpen }: DevtoolsInterfaceProps
-  div(data-theme={theme} className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
+  props { theme, triggerPosition, open, componentFinderActive, componentFinderTitle, setActiveElementTool, elementPickerActive, elementPickerTitle, setOpen }: DevtoolsInterfaceProps
+  div(data-theme={theme} data-position={triggerPosition} className={cx('bdt-root', 'bdt-launcher-host', open && 'is-hidden')} aria-hidden={open ? 'true' : undefined})
     button(type="button" className={cx('bdt-launcher-component-finder bg-white/50 backdrop-blur-3xl', componentFinderActive && 'is-component-finder-active')} aria-pressed={componentFinderActive} aria-label="Component Finder" title={componentFinderTitle} onClick={() => setActiveElementTool((value) => value === 'component-finder' ? null : 'component-finder')})
       ComponentFinderIcon
     button( type="button" className={cx('bdt-launcher-element-picker bg-white/70 backdrop-blur-3xl hover:text-active!', elementPickerActive && 'is-element-picker-active')} aria-pressed={elementPickerActive} aria-label="Element Picker" title={elementPickerTitle} onClick={() => setActiveElementTool((value) => value === 'element-picker' ? null : 'element-picker')})
@@ -68,6 +70,7 @@ setup
   const runtime = useSyncExternalStore(subscribeRuntime, getRuntimeSnapshot, getRuntimeSnapshot);
   const [open, setOpen] = useState(initial.open);
   const [theme, setTheme] = useState(initial.theme);
+  const [triggerPosition, setTriggerPosition] = useState<TriggerPosition>(initial.triggerPosition);
   // The dock stays mounted after closing until its slide-out ends.
   const [docked, setDocked] = useState(initial.open);
   const [tab, setTab] = useState<TabId>(initial.tab);
@@ -89,7 +92,6 @@ setup
   const [projectId, setProjectId] = useState('');
   const projectGeneration = useRef(0);
   const generation = projectGeneration.current;
-  const [runtimeProject, setRuntimeProject] = useState<ProjectReport | null>(null);
   const [project, setProject] = useState<ProjectReport | null>(null);
   const [report, setReport] = useState<FileReport | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,10 +110,10 @@ setup
     : runtime.status === 'connecting' ? 'Connecting…' : 'Runtime off';
 
   useEffect(() => {
-    savePreferences({ theme, open, tab, height, file, showControlFlow, componentsView, settings });
-  }, [theme, open, tab, height, file, showControlFlow, componentsView, settings]);
+    savePreferences({ theme, triggerPosition, open, tab, height, file, showControlFlow, componentsView, settings });
+  }, [theme, triggerPosition, open, tab, height, file, showControlFlow, componentsView, settings]);
 
-  useEffect(() => onSourceChanged(() => setRevision((value) => value + 1)), []);
+  useEffect(() => onSourceChanged((path) => { if (path.endsWith('.btsx')) setRevision((value) => value + 1); }), []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -187,10 +189,9 @@ setup
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([fetchProject(debouncedSettings, projectId), fetchProject(debouncedSettings)]).then(
-      ([next, running]) => {
+    fetchProject(debouncedSettings, projectId).then(
+      (next) => {
         if (cancelled || generation !== projectGeneration.current) return;
-        setRuntimeProject(running);
         setProject(next);
         setLoadError(null);
         setFile((current) => (current !== null && next.files.some((entry) => entry.path === current) ? current : (next.files[0]?.path ?? null)));
@@ -235,13 +236,11 @@ setup
     setRevision((value) => value + 1);
   };
   const viewSource = (path: string, line: number) => {
-    if (projectId !== '') selectProject('');
     setFile(path);
     setTab('inspector');
     setFocus(scrollTarget(line));
   };
   const analyze = (path: string) => {
-    if (projectId !== '') selectProject('');
     setFile(path);
     setTab('refactor');
   };
@@ -264,6 +263,8 @@ if open || docked
     Topbar(
       ~ theme={theme}
       ~ onToggleTheme={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}
+      ~ triggerPosition={triggerPosition}
+      ~ onTriggerPositionChange={setTriggerPosition}
       ~ tab={tab}
       ~ setTab={setTab}
       ~ suggestionCount={suggestionCount}
@@ -282,17 +283,21 @@ if open || docked
     div.bdt-body(role="tabpanel" aria-label={TABS.find((item) => item.id === tab)?.label})
       switch tab
         case 'components'
-          ComponentsPanel(
-            ~ settings={debouncedSettings}
-            ~ components={runtimeProject?.components ?? EMPTY_COMPONENTS}
-            ~ entryComponents={runtimeProject?.entryComponents ?? EMPTY_STRINGS}
-            ~ view={componentsView}
-            ~ onViewChange={setComponentsView}
-            ~ showControlFlow={showControlFlow}
-            ~ onShowControlFlowChange={setShowControlFlow}
-            ~ onViewSource={viewSource}
-            ~ onAnalyze={analyze}
-            ~ )
+          if projectId !== ''
+            ProjectComponentsPanel(key={projectId} projectId={projectId} project={project} loadError={loadError} settings={debouncedSettings} onViewSource={viewSource} onAnalyze={analyze})
+          else
+            ComponentsPanel(
+              ~ key={projectId}
+              ~ settings={debouncedSettings}
+              ~ components={project?.components ?? EMPTY_COMPONENTS}
+              ~ entryComponents={project?.entryComponents ?? EMPTY_STRINGS}
+              ~ view={componentsView}
+              ~ onViewChange={setComponentsView}
+              ~ showControlFlow={showControlFlow}
+              ~ onShowControlFlowChange={setShowControlFlow}
+              ~ onViewSource={viewSource}
+              ~ onAnalyze={analyze}
+              ~ )
         case 'elements'
           ElementsPanel(inspection={elementInspection} onPick={() => setActiveElementTool('element-picker')})
         case 'inspector'
@@ -322,4 +327,4 @@ if open || docked
             ~ onSettingsChange={setSettings}
             ~ onRecentChange={(value) => { if (generation === projectGeneration.current) setRecent(value); }}
             ~ )
-DevtoolsInterface(theme={theme} open={open} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} setOpen={setOpen})
+DevtoolsInterface(theme={theme} triggerPosition={triggerPosition} open={open} componentFinderActive={componentFinderActive} componentFinderTitle={componentFinderTitle} setActiveElementTool={setActiveElementTool} elementPickerActive={elementPickerActive} elementPickerTitle={elementPickerTitle} setOpen={setOpen})

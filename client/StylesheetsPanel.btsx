@@ -1,0 +1,89 @@
+import { useEffect, useState } from 'octane'
+import type { ElementInspection, ElementSnapshot } from './element-inspector.ts'
+import { fileRule, type InspectedCssRule } from './stylesheet-rules.ts'
+import ElementPropertyRow from './ElementPropertyRow.btsx'
+import { openInEditor } from './api.ts'
+
+module
+  interface RuleEditorProps {
+    rule: InspectedCssRule
+    disabled: boolean
+    onEdit: (rule: InspectedCssRule, name: string, value: string | null) => Promise<boolean>
+    onUseRule: (rule: InspectedCssRule) => void
+  }
+
+component RuleEditor
+  props { rule, disabled, onEdit, onUseRule }: RuleEditorProps
+  setup
+    const [name, setName] = useState('');
+    const [value, setValue] = useState('');
+    const add = async (event: SubmitEvent) => {
+      event.preventDefault();
+      if (!name.trim()) return;
+      if (await onEdit(rule, name.trim(), value)) { setName(''); setValue(''); }
+    };
+  section.bdt-css-rule(aria-label={`${rule.selector} in ${rule.label}`})
+    .bdt-css-rule-header
+      code.bdt-css-selector #{rule.selector}
+      if rule.source
+        button.bdt-link(type="button" title="Open CSS rule in editor" onClick={() => openInEditor(rule.source!.path, rule.source!.line, rule.source!.column)}) #{rule.source.path}:#{rule.source.line}
+      else
+        span.bdt-dim #{rule.label}
+    if rule.context.length > 0
+      p.bdt-element-note.bdt-css-context #{rule.context.join(' → ')}
+    if rule.inheritedFrom
+      p.bdt-element-note Inherited declarations from #{rule.inheritedFrom}
+    if rule.active === false
+      p.bdt-element-note Inactive condition — these declarations do not currently apply.
+    elseif rule.active === null && rule.context.some((context) => context.startsWith('@'))
+      p.bdt-element-note Conditional rule — the browser determines whether this rule applies.
+    if !rule.source
+      p.bdt-element-note Read-only: this loaded rule could not be mapped to a unique project CSS rule.
+    .bdt-css-declarations
+      each declaration, index in rule.declarations key `${declaration.name}:${index}`
+        ElementPropertyRow(property={{ name: declaration.name, value: declaration.value, editable: rule.source !== null }} disabled={disabled} removable={rule.source !== null} styleControl={true} onCommit={(name, value) => onEdit(rule, name, value)})
+    if rule.source
+      form.bdt-element-add(onSubmit={add})
+        input.bdt-input(aria-label="New CSS property" placeholder="CSS property" value={name} disabled={disabled} onInput={(event) => setName(event.currentTarget.value)})
+        input.bdt-input(aria-label="New declaration value" placeholder="Value" value={value} disabled={disabled} onInput={(event) => setValue(event.currentTarget.value)})
+        button.bdt-button(type="submit" disabled={disabled || !name.trim()}) Add
+        button.bdt-button(type="button" disabled={disabled} title="Use this rule for computed style edits and layout drags" onClick={() => onUseRule(rule)}) Use for style edits
+
+props { inspection, snapshot, disabled, onRefresh, onUseRule }: { inspection: ElementInspection; snapshot: ElementSnapshot; disabled: boolean; onRefresh: () => void; onUseRule: (rule: InspectedCssRule) => void }
+setup
+  const [path, setPath] = useState('');
+  const [query, setQuery] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setPath(''); setQuery(''); setError(null); }, [inspection]);
+  const file = snapshot.cssFiles?.find((file) => file.path === path);
+  const rules = file ? file.rules.filter((rule) => !rule.context.some((context) => /keyframes$/i.test(context.name))).map((rule) => fileRule(file, rule)) : snapshot.cssRules ?? [];
+  const search = query.trim().toLowerCase();
+  const filtered = rules.filter((rule) => !search || `${rule.selector} ${rule.label} ${rule.declarations.map((declaration) => `${declaration.name}: ${declaration.value}`).join(' ')}`.toLowerCase().includes(search));
+  const edit = async (rule: InspectedCssRule, name: string, value: string | null) => {
+    try { await inspection.editCssRule(rule, name, value); setError(null); onRefresh(); return true; }
+    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); return false; }
+  };
+
+.bdt-stylesheets-panel
+  .bdt-element-filter
+    label.bdt-dim(htmlFor="bdt-css-files") CSS files
+    select.bdt-input(id="bdt-css-files" value={path} disabled={disabled} onChange={(event) => setPath(event.currentTarget.value)})
+      option(value="") Matching element rules
+      each file in snapshot.cssFiles ?? [] key file.path
+        option(value={file.path}) #{file.path}
+    span.bdt-dim #{snapshot.cssFiles?.length ?? 0} files
+  p.bdt-element-note #{path ? 'Browsing this CSS file. Rules here may target other elements.' : 'Rules matching the selected element across loaded stylesheets. Later rules appear later; the browser resolves specificity, layers and !important.'}
+  p.bdt-element-note Edits save to the original CSS rule and affect every element matched by its selector.
+  .bdt-element-filter
+    input.bdt-input(type="search" aria-label="Filter stylesheet rules" placeholder="Find a selector, file or declaration…" value={query} onInput={(event) => setQuery(event.currentTarget.value)})
+    span.bdt-dim #{filtered.length} rules
+  if snapshot.cssLoading
+    p.bdt-element-note(role="status") Loading project CSS files…
+  if snapshot.cssError || file?.error || error
+    p.bdt-element-notice.is-error(role="alert") #{error ?? file?.error ?? snapshot.cssError}
+  each warning in snapshot.cssWarnings ?? [] key warning
+    p.bdt-element-note #{warning}
+  if !snapshot.cssLoading && filtered.length === 0
+    p.bdt-element-note No matching stylesheet rules. Choose a CSS file to browse its declarations, or use Computed styles for inline and Tailwind edits.
+  each rule in filtered key rule.id
+    RuleEditor(rule={rule} disabled={disabled} onEdit={edit} onUseRule={onUseRule})

@@ -311,6 +311,45 @@ export interface UndoResult {
 
 export type ElementStyleTarget = 'inline' | 'css' | 'tailwind'
 
+export interface CssDeclaration {
+  name: string
+  value: string
+}
+
+export interface StylesheetRule {
+  /** Rule order in the source file, including rules nested in at-rules. */
+  index: number
+  selector: string
+  line: number
+  column: number
+  context: Array<{ name: string; params: string }>
+  declarations: CssDeclaration[]
+}
+
+export interface StylesheetFile {
+  path: string
+  hash: string
+  rules: StylesheetRule[]
+  error?: string
+}
+
+export interface StylesheetReport {
+  files: StylesheetFile[]
+}
+
+export interface CssRuleEditRequest {
+  path: string
+  hash: string
+  index: number
+  selector: string
+  declarations: Record<string, string | null>
+}
+
+export interface CssRuleEditResult {
+  file: StylesheetFile
+  undoId: string
+}
+
 export interface ElementTextContext {
   /** Text before the live DOM edit, and the instance among identical source tags. */
   value: string

@@ -154,10 +154,15 @@ click the **Beast** button in the bottom-right corner.
 | Start or stop Element Picker | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or the ruler button |
 | Exit Component Finder or Element Picker | <kbd>Esc</kbd> |
 | Resize the panel | Drag its top edge |
+| Move the floating triggers | Choose **Triggers** in the panel toolbar |
 | Resize a pane | Drag the edge between two panes |
 | Reset a pane's width | Double-click that edge |
 
-The panel remembers its height, pane widths, open tab and analyzer settings
+The **Triggers** selector places the Beast, Component Finder and Element Picker
+buttons at the top right, top center, top left, bottom left, bottom center or
+bottom right (the default).
+
+The panel remembers its trigger position, height, pane widths, open tab and analyzer settings
 per browser. It slides in and out, and all motion becomes near-instant when
 the system asks for reduced motion.
 
@@ -177,9 +182,17 @@ Click the ruler button in the launcher or toolbar, or press
 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. Hover an element for a compact
 preview of its tag, ID and dimensions. Click it to open **Elements** in DevTools.
 
-- **Styles** shows common layout and appearance properties. Enable **All computed
-  styles** or search to inspect the full computed list. Editing a value creates
-  an inline override; remove it to return to the stylesheet value.
+- **Stylesheet rules** shows matching selectors, their declared values, source
+  files and line numbers, including inherited declarations and nested rules.
+  Edit, add or remove a declaration to save it directly to that CSS rule. Media
+  and supports conditions are shown, with inactive rules marked. The **CSS files**
+  selector also browses authored `.css` files anywhere in the project, including
+  files outside `src` and files that are not loaded. Dependencies, build output
+  and DevTools' own files are excluded from this source index.
+- **Computed styles** shows common layout and appearance properties. Enable
+  **All computed styles** or search to inspect the full computed list. Choose
+  Tailwind, inline styles or a CSS rule as the save destination. **Use for style
+  edits** on a stylesheet rule also selects it for layout drags.
 - **Attributes** shows every attribute and lets you edit, add or remove values.
 - **DOM properties** includes inherited properties and runtime values such as
   `value`, `checked` and `disabled`. Editable primitive values can be changed;
@@ -187,8 +200,12 @@ preview of its tag, ID and dimensions. Click it to open **Elements** in DevTools
 
 Press Enter or leave a value field to apply it. **Undo** reverses each edit and
 remains available when switching panels or reselecting the same element.
-These are live page edits only: they do not modify BTSX files, and reloading or
-an app rerender can replace them. Removed elements are marked as disconnected;
+CSS rule edits update the original file and affect every matching element.
+They work without Beast source tags. Attribute, DOM-property, inline and
+Tailwind edits save to the owning `.btsx` file and require source tags. File
+hashes prevent overwriting stale source; undo refuses to overwrite later edits.
+Loaded rules without an unambiguous project source are read-only, and stylesheets
+blocked by browser access rules are listed as unavailable. Removed elements are marked as disconnected;
 use **Pick another** to select their replacement.
 
 The preview appears after 200 ms without pointer movement and sits outside the
@@ -335,11 +352,13 @@ that folder for `.btsx` files, skipping generated and dependency directories.
 Changes in the opened folder refresh the overlay automatically. Empty folders
 can be opened too; they show an empty file list.
 
-The selection belongs to the current browser tab and resets on reload. Use
-**Back to running app** to return to the configured project. Live components
-and Component Finder always inspect the running app; following a component's
-source link switches back to that project. Opening a folder does not start
-its dev server.
+The selection belongs to the current browser tab and resets on reload. The
+**Components** tab lists declarations from the opened folder, with source
+editing, refactoring and undo scoped to that project. Its component count,
+search and selection update when switching folders, including empty folders.
+Use **Back to running app** to restore its live component tree and state.
+Component Finder and Element Picker inspect the running page. Opening a
+folder does not start its dev server.
 
 ## Configuration
 

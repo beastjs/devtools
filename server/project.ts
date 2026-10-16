@@ -35,11 +35,15 @@ import type {
   BlockEditResult,
   TailwindOptimizeRequest,
   TailwindOptimizeResult,
+  StylesheetReport,
+  CssRuleEditRequest,
+  CssRuleEditResult,
 } from '../shared/types.js'
 import { pinBlockIndent } from '../shared/block-indent.js'
 import { sourceBlocks } from './source-blocks.js'
 import { tagSource } from './source-tags.js'
 import { replaceCssRule } from './style-edits.js'
+import { StylesheetFiles } from './stylesheets.js'
 import { editElement } from './element-edits.js'
 import { elementTextSource } from './element-text.js'
 import { optimizeTailwind } from './tailwind-optimize.js'
@@ -91,9 +95,11 @@ export class BeastProject {
   readonly #applied = new Map<string, AppliedRefactor>()
   #octane: ReturnType<typeof createOctaneCompiler> | null = null
   readonly #types: TypeResolver
+  readonly #stylesheets: StylesheetFiles
 
   constructor(options: ProjectOptions) {
     this.#options = options
+    this.#stylesheets = new StylesheetFiles(options.root, options.exclude)
     this.#types = new TypeResolver(options.root, (absolutePath) => {
       if (!existsSync(absolutePath)) return null
       const entry = this.#compile(absolutePath)
@@ -262,6 +268,17 @@ export class BeastProject {
     const entry = this.#compile(absolutePath)
     if (entry.result === null) throw new RefactorError('The source file does not compile.', 422)
     return elementTextSource(entry.result.ast, entry.source, request, absolutePath, this.#options.root)
+  }
+
+  stylesheets(): StylesheetReport { return this.#stylesheets.report() }
+
+  editCssRule(request: CssRuleEditRequest): CssRuleEditResult {
+    const { change, file } = this.#stylesheets.edit(request)
+    this.#write([change])
+    const undoId = randomUUID()
+    this.#applied.set(undoId, { summary: `CSS rule ${request.selector}`, changes: [change] })
+    if (this.#applied.size > UNDO_LIMIT) this.#applied.delete(this.#applied.keys().next().value!)
+    return { file, undoId }
   }
 
   editElement(request: ElementEditRequest): ElementEditResult {

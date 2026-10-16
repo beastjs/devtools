@@ -74,7 +74,7 @@ test.each(['running', 'opened'])('%s project watcher ignores missing filenames a
     const events = await get('/events')
     const reader = events.body!.getReader()
     await reader.read()
-    listener('change', project === 'running' ? 'App.btsx' : join('src', 'App.btsx'))
+    listener('change', join('src', 'App.btsx'))
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
       const chunk = await Promise.race([
@@ -119,6 +119,24 @@ test('opening a folder scopes reads, refactors and undo without changing the run
   expect((await post(`/undo?project=${id}`, { id: undoId })).status).toBe(200)
   expect(readFileSync(other.appPath, 'utf8')).toBe(before)
   expect((await (await post('/open-project', { path: running.root })).json()).id).toBe('')
+})
+
+test('root-level CSS changes emit source events outside the Beast include directories', async () => {
+  const { running, devtools, get } = await fixture()
+  devtools.watch()
+  const events = await get('/events')
+  const reader = events.body!.getReader()
+  await reader.read()
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    writeFileSync(join(running.root, 'theme.css'), '.card { color: teal; }')
+    const chunk = await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('No CSS change event')), 3000) }),
+    ])
+    expect(new TextDecoder().decode(chunk.value)).toContain('"path":"theme.css"')
+    expect((await (await get('/stylesheets')).json()).files[0].path).toBe('theme.css')
+  } finally { clearTimeout(timeout); await reader.cancel() }
 })
 
 test('opening folders validates paths, permits empty folders and enforces same-origin JSON', async () => {
@@ -316,6 +334,29 @@ test('element endpoints identify mapped array text, forward instance context and
   expect(readFileSync(running.appPath, 'utf8')).toBe(source)
 })
 
+test('CSS rules can be discovered, edited by source identity, conflict-checked and undone through the API', async () => {
+  const { running, get, post } = await fixture()
+  const source = readFileSync(running.appPath, 'utf8')
+  const path = 'src/styles.css'
+  const css = '.card { color: red; }\n@media (min-width: 600px) { .card { color: blue; } }\n'
+  writeFileSync(join(running.root, path), css)
+  const report = await get('/stylesheets')
+  expect(report.status).toBe(200)
+  const file = (await report.json()).files[0]
+  const request = { path, hash: file.hash, index: 1, selector: '.card', declarations: { color: 'green' } }
+  expect((await post('/css-rule-edit', request, { Origin: 'http://other.example' })).status).toBe(403)
+  expect((await post('/css-rule-edit', { ...request, index: -1 })).status).toBe(422)
+  expect((await post('/css-rule-edit', { ...request, declarations: { color: 1 } })).status).toBe(422)
+  const saved = await post('/css-rule-edit', request)
+  expect(saved.status).toBe(200)
+  const result = await saved.json()
+  expect(result.file.rules[1].declarations).toEqual([{ name: 'color', value: 'green' }])
+  expect(readFileSync(running.appPath, 'utf8')).toBe(source)
+  expect((await post('/css-rule-edit', request)).status).toBe(409)
+  expect((await post('/undo', { id: result.undoId })).status).toBe(200)
+  expect(readFileSync(join(running.root, path), 'utf8')).toBe(css)
+})
+
 test('source blocks can be read, edited, conflict-checked and undone through the API', async () => {
   const { running, get, post } = await fixture()
   const source = 'section\n  div\n    p Original\n  footer End\n'
@@ -335,4 +376,31 @@ test('source blocks can be read, edited, conflict-checked and undone through the
   expect((await post('/block-edit', request)).status).toBe(409)
   expect((await post('/undo', { id: result.undoId })).status).toBe(200)
   expect(readFileSync(running.appPath, 'utf8')).toBe(source)
+})
+
+test('components with identical names and file paths load, save and undo in the opened project only', async () => {
+  const { running, other, get, post } = await fixture()
+  const runningSource = 'component Card\n  p Running card\n\nCard\n'
+  const otherSource = 'component Card\n  p Opened project card\n\nCard\n'
+  writeFileSync(running.appPath, runningSource)
+  writeFileSync(other.appPath, otherSource)
+  const { id } = await (await post('/open-project', { path: other.root })).json()
+  const project = await (await get(`/project?project=${id}`)).json()
+  expect(project.root).toBe(other.root)
+  expect(project.components.find((component: { name: string }) => component.name === 'Card').absolutePath).toBe(other.appPath)
+  const selection = { path: 'src/App.btsx', host: 'Card', line: 1, kind: 'component' }
+  const loaded = await get(`/source-block?${new URLSearchParams({ ...selection, line: '1', project: id })}`)
+  expect(loaded.status).toBe(200)
+  const report = await loaded.json()
+  expect(report.code).toContain('Opened project card')
+  expect(report.code).not.toContain('Running card')
+  const saved = await post(`/block-edit?project=${id}`, { ...selection, hash: report.hash, code: report.code.replace('Opened project card', 'Edited opened card') })
+  expect(saved.status).toBe(200)
+  const result = await saved.json()
+  expect(readFileSync(other.appPath, 'utf8')).toContain('Edited opened card')
+  expect(readFileSync(running.appPath, 'utf8')).toBe(runningSource)
+  expect((await post('/undo', { id: result.undoId })).status).toBe(409)
+  expect((await post(`/undo?project=${id}`, { id: result.undoId })).status).toBe(200)
+  expect(readFileSync(other.appPath, 'utf8')).toBe(otherSource)
+  expect(readFileSync(running.appPath, 'utf8')).toBe(runningSource)
 })

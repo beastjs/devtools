@@ -57,8 +57,20 @@ export const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: 'refactor', label: 'Refactor' }
 ]
 
+export const TRIGGER_POSITIONS = [
+  { id: 'top-right', label: 'Top right' },
+  { id: 'top-center', label: 'Top center' },
+  { id: 'top-left', label: 'Top left' },
+  { id: 'bottom-left', label: 'Bottom left' },
+  { id: 'bottom-center', label: 'Bottom center' },
+  { id: 'bottom-right', label: 'Bottom right' },
+] as const
+
+export type TriggerPosition = typeof TRIGGER_POSITIONS[number]['id']
+
 export interface Preferences {
   theme: 'dark' | 'light'
+  triggerPosition: TriggerPosition
   open: boolean
   tab: TabId
   height: number
@@ -72,6 +84,7 @@ const STORAGE_KEY = 'beast-devtools:preferences'
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'dark',
+  triggerPosition: 'bottom-right',
   open: false,
   tab: 'components',
   height: 360,
@@ -88,6 +101,8 @@ export function loadPreferences(): Preferences {
       ...DEFAULT_PREFERENCES,
       ...stored,
       theme: stored.theme === 'light' ? 'light' : 'dark',
+      triggerPosition: TRIGGER_POSITIONS.find((position) => position.id === stored.triggerPosition)?.id
+        ?? DEFAULT_PREFERENCES.triggerPosition,
       settings: { ...DEFAULT_SETTINGS, ...stored.settings },
       componentsView: stored.componentsView === 'tree' ? 'tree' : 'blocks',
       height: clampHeight(stored.height ?? DEFAULT_PREFERENCES.height)
