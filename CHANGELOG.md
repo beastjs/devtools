@@ -2,40 +2,7 @@
 
 All notable changes to `@beastjs/devtools` are recorded here.
 
-## 0.1.21 (2026-10-08)
-
-### Added
-
-- Optimize Tailwind classes in the selected component: rename `class` to
-  `className`, convert pixel spacing and sizing to the Tailwind scale, and
-  combine matching padding, margin, gap, and corner radius utilities.
-- Normalize numeric z-index classes and standard border radius values,
-  preserving variants, importance, and supported negative values.
-- Save Tailwind optimizations with conflict checks, source refresh, and undo.
-- Edit mapped text in source arrays, including imported data, from the
-  Elements panel.
-
-### Changed
-
-- Improve component search controls, refactor metrics, and panel styling.
-
-## 0.1.17 (2026-10-04)
-
-### Added
-
-- Save element style edits to CSS files or Tailwind classes, with conflict
-  checks and undo support.
-- Suggest removing empty inline styles from native elements.
-
-### Fixed
-
-- Replace existing inline style values instead of appending duplicate
-  properties or nested spread wrappers. Preserve unrelated dynamic styles.
-- Cancel element picking with Escape without triggering competing page handlers.
-- Ignore missing filenames in both filesystem watchers, preventing a Bun
-  watcher exception during Rspack integration tests and directory changes.
-
-## Unreleased
+## 0.1.22 (2026-10-16)
 
 ### Added
 
@@ -107,6 +74,39 @@ All notable changes to `@beastjs/devtools` are recorded here.
   a `devtools/` folder that no longer exists.
 - `client/env.d.ts` declares `.btsx` modules, so the overlay sources
   type-check on their own.
+
+## 0.1.21 (2026-10-08)
+
+### Added
+
+- Optimize Tailwind classes in the selected component: rename `class` to
+  `className`, convert pixel spacing and sizing to the Tailwind scale, and
+  combine matching padding, margin, gap, and corner radius utilities.
+- Normalize numeric z-index classes and standard border radius values,
+  preserving variants, importance, and supported negative values.
+- Save Tailwind optimizations with conflict checks, source refresh, and undo.
+- Edit mapped text in source arrays, including imported data, from the
+  Elements panel.
+
+### Changed
+
+- Improve component search controls, refactor metrics, and panel styling.
+
+## 0.1.17 (2026-10-04)
+
+### Added
+
+- Save element style edits to CSS files or Tailwind classes, with conflict
+  checks and undo support.
+- Suggest removing empty inline styles from native elements.
+
+### Fixed
+
+- Replace existing inline style values instead of appending duplicate
+  properties or nested spread wrappers. Preserve unrelated dynamic styles.
+- Cancel element picking with Escape without triggering competing page handlers.
+- Ignore missing filenames in both filesystem watchers, preventing a Bun
+  watcher exception during Rspack integration tests and directory changes.
 
 ## 0.1.0
 
