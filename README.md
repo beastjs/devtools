@@ -47,8 +47,8 @@ Production builds are untouched. The plugin runs on the dev server only.
 
 | Dependency | Version |
 | --- | --- |
-| `beast-tsrx` | `^0.4.3` |
-| `octane` | `^0.4.3` |
+| `beast-tsrx` | `^0.13.8` |
+| `octane` | `^0.13.8` |
 | Node.js | `>=22.22.2` |
 | `typescript` *(optional)* | `>=5.0.0`, for typed props in refactors |
 
@@ -500,7 +500,14 @@ requests from your own page.
 
 Requirements: [Bun](https://bun.sh/) and Node.js 22.22.2 or newer.
 
+Development currently links `beast-tsrx` from the sibling `../beast` checkout
+while Beast `0.13.8` awaits publication. Install and build that checkout, then
+register its package with Bun before installing Devtools. CI also needs that
+sibling checkout and link registration while this local dependency is in use.
+
 ```bash
+bun run --cwd ../beast build
+bun link --cwd ../beast
 bun install
 bun run check        # type check, tests, and plugin build
 bun run pack:check   # list the files npm would publish

@@ -2,6 +2,24 @@
 
 All notable changes to `@beastjs/devtools` are recorded here.
 
+## 0.1.23 (2026-10-17)
+
+### Fixed
+
+- Align Beast and Octane peer requirements with `^0.13.8` and update the
+  Rspack/Rsbuild plugins, TSRX tooling, Base UI, Motion, and icons workspace
+  to compatible versions.
+- Refresh dependency lockfiles, documented requirements, and the dev-server
+  fixture for the updated toolchain.
+
+### Development
+
+- Temporarily use the registered local `../beast` checkout while Beast
+  `0.13.8` awaits npm publication. CI needs the same checkout and Bun link
+  registration. Consumers need Beast `0.13.8` or a compatible release.
+- Verified with typechecking, all 223 tests, the plugin build, and package
+  content checks.
+
 ## 0.1.22 (2026-10-16)
 
 ### Added

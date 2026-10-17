@@ -12,6 +12,6 @@
     "typecheck": "tsrx-tsc --noEmit"
   },
   "peerDependencies": {
-    "octane": "0.4.3"
+    "octane": "^0.13.8"
   }
 }
