@@ -3,15 +3,7 @@
 > In-page devtools for [Beast](https://www.npmjs.com/package/beast-tsrx) (BTSX)
 > and [Octane](https://octanejs.dev/) apps.
 
-[![npm](https://img.shields.io/badge/npm-@beastjs%2Fdevtools-cb3837?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@beastjs/devtools)
-[![Version](https://img.shields.io/badge/version-0.1.4-6f42c1?style=flat-square)](package.json)
-[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.22.2-339933?style=flat-square&logo=nodedotjs&logoColor=white)](package.json)
-[![Dependencies](https://img.shields.io/badge/dependencies-0-117fbd?style=flat-square)](package.json)
-[![Bundlers](https://img.shields.io/badge/Vite%20%C2%B7%20Rspack%20%C2%B7%20Rsbuild-supported-111827?style=flat-square)](#quick-start)
-[![License: ISC](https://img.shields.io/badge/license-ISC-0f766e?style=flat-square)](LICENSE)
-
-**See the live tree. Read the compiled output. Flatten deep templates in one
-click.**
+![Mural](public/devtools-ss.png)
 
 [Install](#installation) ·
 [Quick start](#quick-start) ·
@@ -33,32 +25,32 @@ Production builds are untouched. The plugin runs on the dev server only.
 
 ## At a glance
 
-| Capability | What it does | Why it matters |
-| --- | --- | --- |
-| **Components** | Live component tree with hooks, context and effects | Debug state without logging |
-| **Element Picker** | Hover HTML or SVG elements to see spacing, size, ID and type | Inspect layout without source tags |
-| **Component Finder** | Hover the page to see a component and its `.btsx` line | Go from pixels to source |
-| **BTSX → TSRX** | Source and compiled output, linked line by line | See what Beast generates |
-| **Refactor** | Finds deep nesting, repeated markup and sibling runs | Keeps templates readable |
-| **Auto-refactor** | Writes the component, props interface and imports | Refactors in one reviewed step |
-| **Undo** | Restores the files a refactor touched | Makes changes low-risk |
+| Capability           | What it does                                                 | Why it matters                     |
+| -------------------- | ------------------------------------------------------------ | ---------------------------------- |
+| **Components**       | Live component tree with hooks, context and effects          | Debug state without logging        |
+| **Element Picker**   | Hover HTML or SVG elements to see spacing, size, ID and type | Inspect layout without source tags |
+| **Component Finder** | Hover the page to see a component and its `.btsx` line       | Go from pixels to source           |
+| **BTSX → TSRX**      | Source and compiled output, linked line by line              | See what Beast generates           |
+| **Refactor**         | Finds deep nesting, repeated markup and sibling runs         | Keeps templates readable           |
+| **Auto-refactor**    | Writes the component, props interface and imports            | Refactors in one reviewed step     |
+| **Undo**             | Restores the files a refactor touched                        | Makes changes low-risk             |
 
 ## Requirements
 
-| Dependency | Version |
-| --- | --- |
-| `beast-tsrx` | `^0.13.8` |
-| `octane` | `^0.13.8` |
-| Node.js | `>=22.22.2` |
-| `typescript` *(optional)* | `>=5.0.0`, for typed props in refactors |
+| Dependency                | Version                                 |
+| ------------------------- | --------------------------------------- |
+| `beast-tsrx`              | `^0.13.8`                               |
+| `octane`                  | `^0.13.8`                               |
+| Node.js                   | `>=22.22.2`                             |
+| `typescript` _(optional)_ | `>=5.0.0`, for typed props in refactors |
 
 Plus one bundler:
 
-| Bundler | Packages | Version |
-| --- | --- | --- |
-| Vite | `vite` | `^8.0.16` |
-| Rspack | `@rspack/core` and `@rspack/dev-server` | `^2.0.0` |
-| Rsbuild | `@rsbuild/core` | `^2.0.0` |
+| Bundler | Packages                                | Version   |
+| ------- | --------------------------------------- | --------- |
+| Vite    | `vite`                                  | `^8.0.16` |
+| Rspack  | `@rspack/core` and `@rspack/dev-server` | `^2.0.0`  |
+| Rsbuild | `@rsbuild/core`                         | `^2.0.0`  |
 
 ## Installation
 
@@ -88,8 +80,8 @@ export default defineConfig({
   plugins: [
     // `profile: 'auto'` enables the inspection hook in dev builds only.
     beastOctane({ octane: { profile: 'auto' } }),
-    beastDevtools(),
-  ],
+    beastDevtools()
+  ]
 })
 ```
 
@@ -107,8 +99,8 @@ export default {
   plugins: [
     // Rspack's `profile` is a boolean; the CLI sets NODE_ENV before loading this file.
     beastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } }),
-    beastDevtools(),
-  ],
+    beastDevtools()
+  ]
 }
 ```
 
@@ -130,10 +122,7 @@ import { beastOctane } from 'beast-tsrx/rsbuild'
 import { beastDevtools } from '@beastjs/devtools/rsbuild'
 
 export default defineConfig({
-  plugins: [
-    ...beastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } }),
-    beastDevtools(),
-  ],
+  plugins: [...beastOctane({ octane: { profile: process.env.NODE_ENV !== 'production' } }), beastDevtools()]
 })
 ```
 
@@ -147,16 +136,16 @@ click the **Beast** button in the bottom-right corner.
 
 ### Keyboard and mouse
 
-| Action | How |
-| --- | --- |
-| Open or close the panel | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, or the **Beast** button |
-| Start or stop the Component Finder | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, or the crosshair button |
-| Start or stop Element Picker | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or the ruler button |
-| Exit Component Finder or Element Picker | <kbd>Esc</kbd> |
-| Resize the panel | Drag its top edge |
-| Move the floating triggers | Choose **Triggers** in the panel toolbar |
-| Resize a pane | Drag the edge between two panes |
-| Reset a pane's width | Double-click that edge |
+| Action                                  | How                                                                   |
+| --------------------------------------- | --------------------------------------------------------------------- |
+| Open or close the panel                 | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, or the **Beast** button |
+| Start or stop the Component Finder      | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>, or the crosshair button |
+| Start or stop Element Picker            | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or the ruler button     |
+| Exit Component Finder or Element Picker | <kbd>Esc</kbd>                                                        |
+| Resize the panel                        | Drag its top edge                                                     |
+| Move the floating triggers              | Choose **Triggers** in the panel toolbar                              |
+| Resize a pane                           | Drag the edge between two panes                                       |
+| Reset a pane's width                    | Double-click that edge                                                |
 
 The **Triggers** selector places the Beast, Component Finder and Element Picker
 buttons at the top right, top center, top left, bottom left, bottom center or
@@ -249,11 +238,11 @@ line. Both panes update when you save.
 The nesting depth of every template line, with totals and a per-depth chart,
 plus three kinds of suggestions:
 
-| Suggestion | Finds | Becomes |
-| --- | --- | --- |
-| **Extract** | A section whose descendants exceed the depth limit measured from its starting line | A component, with props inferred from the bindings it uses |
-| **Shared shape** | Blocks with the same markup | One component. Differing attribute values, text and conditions become props |
-| **Repeated** | Three or more same-shape siblings, or two larger ones | An `each` over an array, keyed by a unique field or the index |
+| Suggestion       | Finds                                                                              | Becomes                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **Extract**      | A section whose descendants exceed the depth limit measured from its starting line | A component, with props inferred from the bindings it uses                  |
+| **Shared shape** | Blocks with the same markup                                                        | One component. Differing attribute values, text and conditions become props |
+| **Repeated**     | Three or more same-shape siblings, or two larger ones                              | An `each` over an array, keyed by a unique field or the index               |
 
 For example, two copy buttons that differ only in their handler become calls
 to one component:
@@ -312,11 +301,11 @@ exported when the section moves to its own file. Each prop's type comes from
 your project's TypeScript, read at the section itself, so loop variables and
 narrowing from `if` and `switch` branches are accounted for:
 
-| The type is… | It is written as… |
-| --- | --- |
-| Already nameable in the file (globals, local types, existing imports) | That name |
-| A named type exported from another module | That name, with an `import type` added |
-| Not exported anywhere, such as Octane's internal setter type | The full type, for example `(next: PanelId \| ((prev: PanelId) => PanelId)) => void` |
+| The type is…                                                          | It is written as…                                                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Already nameable in the file (globals, local types, existing imports) | That name                                                                            |
+| A named type exported from another module                             | That name, with an `import type` added                                               |
+| Not exported anywhere, such as Octane's internal setter type          | The full type, for example `(next: PanelId \| ((prev: PanelId) => PanelId)) => void` |
 
 If TypeScript can't be loaded from your project, types are estimated from the
 source and the card is marked **estimated types**.
@@ -366,17 +355,17 @@ folder does not start its dev server.
 beastDevtools({
   include: ['src'],
   analyzer: { depthLimit: 5, minLines: 8, fileLines: 30 },
-  componentFinder: true,
+  componentFinder: true
 })
 ```
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `include` | `['src']` | Directories, relative to the project root, scanned for `.btsx` files |
-| `analyzer.depthLimit` | `5` | Nesting depth (0 = component root) above which a line counts as deep |
-| `analyzer.minLines` | `8` | Smallest section, in lines, worth extracting |
-| `analyzer.fileLines` | `30` | Sections at least this long move to their own file by default |
-| `componentFinder` | `true` | Tag elements with their component and source line for Component Finder |
+| Option                | Default   | Description                                                            |
+| --------------------- | --------- | ---------------------------------------------------------------------- |
+| `include`             | `['src']` | Directories, relative to the project root, scanned for `.btsx` files   |
+| `analyzer.depthLimit` | `5`       | Nesting depth (0 = component root) above which a line counts as deep   |
+| `analyzer.minLines`   | `8`       | Smallest section, in lines, worth extracting                           |
+| `analyzer.fileLines`  | `30`      | Sections at least this long move to their own file by default          |
+| `componentFinder`     | `true`    | Tag elements with their component and source line for Component Finder |
 
 `elementPicker` remains a deprecated alias for `componentFinder`. When both are
 provided, `componentFinder` takes precedence. Element Picker works without source tags.
@@ -445,14 +434,14 @@ requests from your own page.
 
 ## Troubleshooting
 
-| Symptom | Cause and fix |
-| --- | --- |
-| Components shows **Runtime off** | Octane's inspection hook is missing. Enable `profile` in `beastOctane()` for dev builds, as in [Quick start](#quick-start). |
-| The overlay is unstyled under Rspack | Add a rule for `.css` files: `{ test: /\.css$/, type: 'css' }`. |
-| Component Finder outlines nothing | `componentFinder` is `false`, or the element comes from a package in `node_modules`, which isn't tagged. |
-| **Open in editor** does nothing | Set `LAUNCH_EDITOR` to your editor's command (for example `code` or `cursor`) and restart the dev server. |
-| A file is missing from the file list | It sits outside the `include` directories. Add its directory to `include`. |
-| Panel sizes or settings look wrong | Clear the `beast-devtools:preferences` and `beast-devtools:layout` keys from the page's local storage. |
+| Symptom                              | Cause and fix                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Components shows **Runtime off**     | Octane's inspection hook is missing. Enable `profile` in `beastOctane()` for dev builds, as in [Quick start](#quick-start). |
+| The overlay is unstyled under Rspack | Add a rule for `.css` files: `{ test: /\.css$/, type: 'css' }`.                                                             |
+| Component Finder outlines nothing    | `componentFinder` is `false`, or the element comes from a package in `node_modules`, which isn't tagged.                    |
+| **Open in editor** does nothing      | Set `LAUNCH_EDITOR` to your editor's command (for example `code` or `cursor`) and restart the dev server.                   |
+| A file is missing from the file list | It sits outside the `include` directories. Add its directory to `include`.                                                  |
+| Panel sizes or settings look wrong   | Clear the `beast-devtools:preferences` and `beast-devtools:layout` keys from the page's local storage.                      |
 
 ## Limitations
 
@@ -543,7 +532,7 @@ Released under the [ISC License](LICENSE).
 
 ---
 
-*Built for Beast and Octane.*
+_Built for Beast and Octane._
 
 ### Continue inline props
 
@@ -566,6 +555,5 @@ elements with **5 or more inline props**. Adjust **Continue at props** to change
 that minimum; it is saved with your browser preferences. Select **Continue props
 with ~** on a suggestion to review its diff, then **Apply changes** to save it.
 Already continued headers are excluded from automatic suggestions.
-
 
 --automode
